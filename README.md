@@ -101,6 +101,28 @@ To enable PDF later:
 - set `ENABLE_PDF_EXPORT=1`
 - unset `DISABLE_PDF_EXPORT` / `NEXT_PUBLIC_DISABLE_PDF_EXPORT` on Vercel
 
+## GitHub Actions CI/CD (deploys to Vercel)
+
+This repo includes `/.github/workflows/ci-vercel.yml`:
+
+- Pull requests: runs CI (`npm ci`, TypeScript check, Next.js build, Python syntax check)
+- Push to `main`: runs CI, then deploys to Vercel (production) using the Vercel CLI
+
+Add these GitHub repository secrets before enabling the deploy job:
+
+- `VERCEL_TOKEN` (create in Vercel Account Settings -> Tokens)
+- `VERCEL_ORG_ID`
+- `VERCEL_PROJECT_ID`
+
+You can get `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` from:
+
+- Vercel project settings, or
+- local `vercel link` (it writes `.vercel/project.json`, which is gitignored)
+
+Important:
+
+- App runtime secrets (Supabase, worker URL/token, etc.) should be configured in the Vercel project environment variables, not in GitHub secrets.
+
 ## Export behavior
 
 - A normal week exports as one file.
