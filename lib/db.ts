@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { getCurrentUserId } from "./auth";
+import { getCurrentUserId, requireCurrentUser } from "./auth";
 import { getIsoWeekDates, getIsoWeeksInYear, splitWeekByMonth } from "./calendar";
 import { appendQuery, getSupabaseConfig, postgrestEq, postgrestIn, postgrestRangeGte, postgrestRangeLte, supabaseRestJson } from "./supabase-rest";
 import {
@@ -20,6 +20,9 @@ const DB_FILE = path.join(DATA_DIR, "wochenbericht-db.json");
 
 const SUPABASE_PROFILES_TABLE = process.env.SUPABASE_PROFILES_TABLE?.trim() || "wochenbericht_profiles";
 const SUPABASE_ENTRIES_TABLE = process.env.SUPABASE_ENTRIES_TABLE?.trim() || "wochenbericht_entries";
+const USERNAME_OVERRIDE_BY_EMAIL: Record<string, string> = {
+  "collanjeo@gmail.com": "max.muster"
+};
 
 function isSupabaseDbEnabled() {
   if (process.env.DB_BACKEND?.trim() === "local") return false;
@@ -31,6 +34,26 @@ async function getScopedUserId() {
     return process.env.APP_DEFAULT_USER_ID?.trim() || "local-user";
   }
   return getCurrentUserId();
+}
+
+type ScopedUserIdentity = {
+  id: string;
+  email: string | null;
+};
+
+async function getScopedUserIdentity(): Promise<ScopedUserIdentity> {
+  if (!isSupabaseDbEnabled()) {
+    return {
+      id: process.env.APP_DEFAULT_USER_ID?.trim() || "local-user",
+      email: process.env.APP_DEFAULT_USER_EMAIL?.trim() || null
+    };
+  }
+
+  const user = await requireCurrentUser();
+  return {
+    id: user.id,
+    email: typeof user.email === "string" && user.email.trim() ? user.email.trim() : null
+  };
 }
 
 function nowIso() {
@@ -85,6 +108,100 @@ function sanitizeProfile(profile: unknown): UserProfile {
   };
 }
 
+function normalizeOptionalText(value: unknown) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function getEmailLocalPart(email?: string | null) {
+  const trimmed = normalizeOptionalText(email);
+  if (!trimmed) return "";
+  const localPart = trimmed.split("@", 1)[0]?.split("+", 1)[0]?.trim() ?? "";
+  return localPart;
+}
+
+function getPreferredUsernameFromEmail(email?: string | null) {
+  const normalizedEmail = normalizeOptionalText(email)?.toLowerCase() ?? "";
+  if (!normalizedEmail) return "";
+  return USERNAME_OVERRIDE_BY_EMAIL[normalizedEmail] ?? getEmailLocalPart(normalizedEmail);
+}
+
+function capitalizeNamePart(value: string) {
+  if (!value) return "";
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
+
+function deriveProfileNamesFromEmail(email?: string | null) {
+  const localPart = getEmailLocalPart(email);
+  if (!localPart) {
+    return { vorname: "", name: "" };
+  }
+
+  const dotParts = localPart
+    .split(".")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const toWords = (value: string) =>
+    value
+      .split(/[-_]+/g)
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map(capitalizeNamePart);
+
+  if (dotParts.length <= 1) {
+    return {
+      vorname: toWords(dotParts[0] ?? "").join(" ").trim(),
+      name: ""
+    };
+  }
+
+  return {
+    vorname: toWords(dotParts.slice(0, -1).join("-")).join(" ").trim(),
+    name: toWords(dotParts[dotParts.length - 1]).join(" ").trim()
+  };
+}
+
+function buildSupabaseProfileColumns(profile: UserProfile, email?: string | null) {
+  const normalizedEmail = normalizeOptionalText(email);
+  const firstName = normalizeOptionalText(profile.vorname);
+  const lastName = normalizeOptionalText(profile.name);
+  const username = normalizeOptionalText(getPreferredUsernameFromEmail(normalizedEmail));
+  const displayName = normalizeOptionalText([firstName, lastName].filter(Boolean).join(" "));
+
+  return {
+    email: normalizedEmail,
+    username,
+    first_name: firstName,
+    last_name: lastName,
+    display_name: displayName
+  };
+}
+
+function profileFromSupabaseRow(row: SupabaseProfileRow, authEmail?: string | null): UserProfile {
+  const payload = sanitizeProfile(row.payload);
+  const emailFallback = row.email ?? authEmail ?? null;
+  const derivedNames = deriveProfileNamesFromEmail(emailFallback);
+  const firstNameFallback = normalizeOptionalText(row.first_name) ?? normalizeOptionalText(derivedNames.vorname) ?? "";
+  const lastNameFallback = normalizeOptionalText(row.last_name) ?? normalizeOptionalText(derivedNames.name) ?? "";
+
+  return sanitizeProfile({
+    ...payload,
+    vorname: payload.vorname || firstNameFallback,
+    name: payload.name || lastNameFallback
+  });
+}
+
+function createInitialProfileFromEmail(email?: string | null): UserProfile {
+  const derived = deriveProfileNamesFromEmail(email);
+  return sanitizeProfile({
+    ...EMPTY_PROFILE,
+    vorname: derived.vorname,
+    name: derived.name
+  });
+}
+
 function hasMeaningfulLineData(line: DailyLine) {
   const hasExplicitStatusCode = (() => {
     const code = line.lohnType.trim().toUpperCase();
@@ -133,6 +250,12 @@ async function writeLocalDb(db: AppDb) {
 type SupabaseProfileRow = {
   user_id: string;
   payload: UserProfile;
+  email?: string | null;
+  username?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  display_name?: string | null;
+  created_at?: string;
   updated_at?: string;
 };
 
@@ -145,7 +268,7 @@ type SupabaseEntryRow = {
 
 async function getSupabaseProfileRow(userId: string): Promise<SupabaseProfileRow | null> {
   const path = appendQuery(`/rest/v1/${SUPABASE_PROFILES_TABLE}`, {
-    select: "user_id,payload,updated_at",
+    select: "user_id,email,username,first_name,last_name,display_name,payload,created_at,updated_at",
     user_id: postgrestEq(userId),
     limit: "1"
   });
@@ -153,11 +276,12 @@ async function getSupabaseProfileRow(userId: string): Promise<SupabaseProfileRow
   return rows[0] ?? null;
 }
 
-async function upsertSupabaseProfile(userId: string, profile: UserProfile): Promise<UserProfile> {
+async function upsertSupabaseProfile(identity: ScopedUserIdentity, profile: UserProfile): Promise<UserProfile> {
+  const columns = buildSupabaseProfileColumns(profile, identity.email);
   const rows = await supabaseRestJson<SupabaseProfileRow[]>(
     appendQuery(`/rest/v1/${SUPABASE_PROFILES_TABLE}`, {
       on_conflict: "user_id",
-      select: "payload"
+      select: "user_id,email,username,first_name,last_name,display_name,payload,created_at,updated_at"
     }),
     {
       method: "POST",
@@ -167,14 +291,22 @@ async function upsertSupabaseProfile(userId: string, profile: UserProfile): Prom
       },
       body: JSON.stringify([
         {
-          user_id: userId,
+          user_id: identity.id,
+          ...columns,
           payload: profile,
           updated_at: nowIso()
         }
       ])
     }
   );
-  return sanitizeProfile(rows[0]?.payload ?? profile);
+
+  const fallbackRow: SupabaseProfileRow = {
+    user_id: identity.id,
+    payload: profile,
+    ...columns
+  };
+
+  return profileFromSupabaseRow(rows[0] ?? fallbackRow, identity.email);
 }
 
 async function getSupabaseEntryRow(userId: string, date: string): Promise<SupabaseEntryRow | null> {
@@ -251,9 +383,14 @@ export async function getProfile() {
     return db.profile;
   }
 
-  const userId = await getScopedUserId();
-  const row = await getSupabaseProfileRow(userId);
-  return row ? sanitizeProfile(row.payload) : structuredClone(EMPTY_PROFILE);
+  const identity = await getScopedUserIdentity();
+  const row = await getSupabaseProfileRow(identity.id);
+  if (row) {
+    return profileFromSupabaseRow(row, identity.email);
+  }
+
+  const initialProfile = createInitialProfileFromEmail(identity.email);
+  return upsertSupabaseProfile(identity, initialProfile);
 }
 
 export async function saveProfile(profile: Partial<AppDb["profile"]>) {
@@ -279,7 +416,7 @@ export async function saveProfile(profile: Partial<AppDb["profile"]>) {
     return db.profile;
   }
 
-  return upsertSupabaseProfile(await getScopedUserId(), nextProfile);
+  return upsertSupabaseProfile(await getScopedUserIdentity(), nextProfile);
 }
 
 export async function getEntry(date: string): Promise<DailyEntry | null> {

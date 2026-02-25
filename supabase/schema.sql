@@ -3,9 +3,55 @@
 
 create table if not exists public.wochenbericht_profiles (
   user_id uuid primary key references auth.users(id) on delete cascade,
+  email text,
+  username text,
+  first_name text,
+  last_name text,
+  display_name text,
   payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Add explicit profile columns for existing installations that already have the table.
+alter table public.wochenbericht_profiles add column if not exists email text;
+alter table public.wochenbericht_profiles add column if not exists username text;
+alter table public.wochenbericht_profiles add column if not exists first_name text;
+alter table public.wochenbericht_profiles add column if not exists last_name text;
+alter table public.wochenbericht_profiles add column if not exists display_name text;
+alter table public.wochenbericht_profiles add column if not exists created_at timestamptz not null default now();
+
+create index if not exists wochenbericht_profiles_email_idx
+  on public.wochenbericht_profiles (email);
+
+create index if not exists wochenbericht_profiles_username_idx
+  on public.wochenbericht_profiles (username);
+
+-- Backfill explicit columns from auth.users and the existing JSON payload.
+update public.wochenbericht_profiles as p
+set
+  email = coalesce(nullif(p.email, ''), u.email),
+  username = coalesce(
+    nullif(p.username, ''),
+    nullif(split_part(coalesce(u.email, ''), '@', 1), '')
+  ),
+  first_name = coalesce(nullif(p.first_name, ''), nullif(p.payload ->> 'vorname', '')),
+  last_name = coalesce(nullif(p.last_name, ''), nullif(p.payload ->> 'name', '')),
+  display_name = coalesce(
+    nullif(p.display_name, ''),
+    nullif(
+      trim(
+        concat_ws(
+          ' ',
+          coalesce(nullif(p.first_name, ''), nullif(p.payload ->> 'vorname', '')),
+          coalesce(nullif(p.last_name, ''), nullif(p.payload ->> 'name', ''))
+        )
+      ),
+      ''
+    )
+  )
+from auth.users as u
+where u.id = p.user_id;
 
 create table if not exists public.wochenbericht_entries (
   user_id uuid not null references auth.users(id) on delete cascade,

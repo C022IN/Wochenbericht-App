@@ -42,6 +42,14 @@ export class AuthError extends Error {
   }
 }
 
+const USERNAME_OVERRIDE_BY_EMAIL: Record<string, string> = {
+  "collanjeo@gmail.com": "max.muster"
+};
+
+const EMAIL_OVERRIDE_BY_USERNAME: Record<string, string> = Object.fromEntries(
+  Object.entries(USERNAME_OVERRIDE_BY_EMAIL).map(([email, username]) => [username.toLowerCase(), email])
+) as Record<string, string>;
+
 function getLocalFallbackUserId() {
   return process.env.APP_DEFAULT_USER_ID?.trim() || "00000000-0000-0000-0000-000000000000";
 }
@@ -191,6 +199,9 @@ function getUsernameFromEmail(email: string) {
   const trimmed = email.trim();
   const atIndex = trimmed.indexOf("@");
   if (atIndex <= 0) return "";
+  const normalizedEmail = trimmed.toLowerCase();
+  const override = USERNAME_OVERRIDE_BY_EMAIL[normalizedEmail];
+  if (override) return override;
   return trimmed.slice(0, atIndex);
 }
 
@@ -205,12 +216,17 @@ async function resolveLoginEmail(identifier: string) {
   }
 
   const username = trimmed.toLowerCase();
+  const overrideEmail = EMAIL_OVERRIDE_BY_USERNAME[username];
+  if (overrideEmail) {
+    return overrideEmail;
+  }
   const response = await supabaseAdminAuthJson<SupabaseAdminUsersResponse>("/auth/v1/admin/users?page=1&per_page=1000");
   const users = Array.isArray(response.users) ? response.users : [];
   const matches = users.filter((user) => {
     if (typeof user.email !== "string" || !user.email) return false;
     const localPart = user.email.split("@", 1)[0]?.toLowerCase() ?? "";
-    return localPart === username;
+    const preferredUsername = getUsernameFromEmail(user.email).toLowerCase();
+    return localPart === username || preferredUsername === username;
   });
 
   if (matches.length > 1) {
