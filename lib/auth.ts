@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { getSupabaseConfig } from "./supabase-rest";
 
 export const AUTH_ACCESS_COOKIE = "wb_at";
 export const AUTH_REFRESH_COOKIE = "wb_rt";
@@ -15,6 +16,15 @@ type SupabaseAuthSessionResponse = {
   expires_in?: number;
   token_type?: string;
   user?: SupabaseAuthUser;
+};
+
+type SupabaseAdminUser = {
+  id?: string;
+  email?: string | null;
+};
+
+type SupabaseAdminUsersResponse = {
+  users?: SupabaseAdminUser[];
 };
 
 export type AuthUser = {
@@ -40,6 +50,11 @@ function getSupabaseAuthConfig() {
   const url = process.env.SUPABASE_URL?.trim()?.replace(/\/+$/, "");
   const anonKey = process.env.SUPABASE_ANON_KEY?.trim();
   return url && anonKey ? { url, anonKey } : null;
+}
+
+function getSupabaseAdminAuthConfig() {
+  const config = getSupabaseConfig();
+  return config ? { url: config.url, serviceRoleKey: config.serviceRoleKey } : null;
 }
 
 export function isSupabaseAuthEnabled() {
@@ -94,6 +109,45 @@ async function supabaseAuthJson<T>(path: string, init?: RequestInit): Promise<T>
   return parsed as T;
 }
 
+async function supabaseAdminAuthJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const config = getSupabaseAdminAuthConfig();
+  if (!config) {
+    throw new AuthError("Username login is not configured. Please use your email address.", 500);
+  }
+
+  const res = await fetch(`${config.url}${path}`, {
+    ...init,
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+      ...(init?.headers ?? {})
+    }
+  });
+
+  const text = await res.text();
+  let parsed: unknown = null;
+  if (text) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = text;
+    }
+  }
+
+  if (!res.ok) {
+    const message =
+      typeof parsed === "object" &&
+      parsed &&
+      "message" in parsed &&
+      typeof (parsed as { message?: unknown }).message === "string"
+        ? (parsed as { message: string }).message
+        : `Supabase admin auth request failed (${res.status})`;
+    throw new AuthError(message, res.status);
+  }
+
+  return parsed as T;
+}
+
 function setSessionCookies(
   session: Required<Pick<SupabaseAuthSessionResponse, "access_token" | "refresh_token">> &
     Pick<SupabaseAuthSessionResponse, "expires_in">
@@ -133,7 +187,46 @@ function ensureSessionTokens(session: SupabaseAuthSessionResponse) {
   };
 }
 
-export async function signInWithPassword(email: string, password: string) {
+function getUsernameFromEmail(email: string) {
+  const trimmed = email.trim();
+  const atIndex = trimmed.indexOf("@");
+  if (atIndex <= 0) return "";
+  return trimmed.slice(0, atIndex);
+}
+
+async function resolveLoginEmail(identifier: string) {
+  const trimmed = identifier.trim();
+  if (!trimmed) {
+    throw new AuthError("Email or username is required.", 400);
+  }
+
+  if (trimmed.includes("@")) {
+    return trimmed;
+  }
+
+  const username = trimmed.toLowerCase();
+  const response = await supabaseAdminAuthJson<SupabaseAdminUsersResponse>("/auth/v1/admin/users?page=1&per_page=1000");
+  const users = Array.isArray(response.users) ? response.users : [];
+  const matches = users.filter((user) => {
+    if (typeof user.email !== "string" || !user.email) return false;
+    const localPart = user.email.split("@", 1)[0]?.toLowerCase() ?? "";
+    return localPart === username;
+  });
+
+  if (matches.length > 1) {
+    throw new AuthError("Username is ambiguous. Please sign in with your full email address.", 400);
+  }
+
+  const email = matches[0]?.email;
+  if (!email) {
+    throw new AuthError("Username not found. Please sign in with your full email address.", 400);
+  }
+
+  return email;
+}
+
+export async function signInWithPassword(emailOrUsername: string, password: string) {
+  const email = await resolveLoginEmail(emailOrUsername);
   const session = await supabaseAuthJson<SupabaseAuthSessionResponse>("/auth/v1/token?grant_type=password", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -145,10 +238,21 @@ export async function signInWithPassword(email: string, password: string) {
 }
 
 export async function signUpWithPassword(email: string, password: string) {
+  const username = getUsernameFromEmail(email);
   const session = await supabaseAuthJson<SupabaseAuthSessionResponse>("/auth/v1/signup", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({
+      email,
+      password,
+      data: username
+        ? {
+            username,
+            display_name: username,
+            full_name: username
+          }
+        : undefined
+    })
   });
 
   const hasSession = Boolean(session.access_token && session.refresh_token);
