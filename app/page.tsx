@@ -13,10 +13,12 @@ import { ProfileCard } from "@/components/ProfileCard";
 import { requirePageUser } from "@/lib/auth";
 
 type PageProps = {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<SearchParams>;
 };
 
-function parseYear(searchParams?: PageProps["searchParams"]) {
+type SearchParams = Record<string, string | string[] | undefined>;
+
+function parseYear(searchParams?: SearchParams) {
   const raw = searchParams?.year;
   const value = Array.isArray(raw) ? raw[0] : raw;
   const current = new Date().getFullYear();
@@ -26,7 +28,8 @@ function parseYear(searchParams?: PageProps["searchParams"]) {
 
 export default async function HomePage({ searchParams }: PageProps) {
   await requirePageUser("/");
-  const year = parseYear(searchParams);
+  const resolvedSearchParams = await searchParams;
+  const year = parseYear(resolvedSearchParams);
   const [weekSummaries, profile, template] = await Promise.all([
     listWeekSummaries(year),
     getProfile(),

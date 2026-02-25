@@ -18,10 +18,10 @@ import { getEntriesByDates, getWeekSummary } from "@/lib/db";
 import { requirePageUser } from "@/lib/auth";
 
 type PageProps = {
-  params: { year: string; kw: string };
+  params: Promise<{ year: string; kw: string }>;
 };
 
-function parseParams({ year, kw }: PageProps["params"]) {
+function parseParams({ year, kw }: { year: string; kw: string }) {
   const y = Number(year);
   const w = Number(kw);
   if (!Number.isInteger(y) || !Number.isInteger(w) || y < 2000 || y > 2100 || w < 1 || w > 53) {
@@ -31,8 +31,9 @@ function parseParams({ year, kw }: PageProps["params"]) {
 }
 
 export default async function WeekPage({ params }: PageProps) {
-  await requirePageUser(`/week/${params.year}/${params.kw}`);
-  const parsed = parseParams(params);
+  const resolvedParams = await params;
+  await requirePageUser(`/week/${resolvedParams.year}/${resolvedParams.kw}`);
+  const parsed = parseParams(resolvedParams);
   if (!parsed) notFound();
 
   const { year, kw } = parsed;

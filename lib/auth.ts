@@ -148,11 +148,11 @@ async function supabaseAdminAuthJson<T>(path: string, init?: RequestInit): Promi
   return parsed as T;
 }
 
-function setSessionCookies(
+async function setSessionCookies(
   session: Required<Pick<SupabaseAuthSessionResponse, "access_token" | "refresh_token">> &
     Pick<SupabaseAuthSessionResponse, "expires_in">
 ) {
-  const store = cookies();
+  const store = await cookies();
   const common = {
     httpOnly: true,
     sameSite: "lax" as const,
@@ -170,8 +170,8 @@ function setSessionCookies(
   });
 }
 
-export function clearSessionCookies() {
-  const store = cookies();
+export async function clearSessionCookies() {
+  const store = await cookies();
   store.delete(AUTH_ACCESS_COOKIE);
   store.delete(AUTH_REFRESH_COOKIE);
 }
@@ -233,7 +233,7 @@ export async function signInWithPassword(emailOrUsername: string, password: stri
     body: JSON.stringify({ email, password })
   });
 
-  setSessionCookies(ensureSessionTokens(session));
+  await setSessionCookies(ensureSessionTokens(session));
   return session.user ?? null;
 }
 
@@ -257,7 +257,7 @@ export async function signUpWithPassword(email: string, password: string) {
 
   const hasSession = Boolean(session.access_token && session.refresh_token);
   if (hasSession) {
-    setSessionCookies(ensureSessionTokens(session));
+    await setSessionCookies(ensureSessionTokens(session));
   }
 
   return { user: session.user ?? null, hasSession };
@@ -291,7 +291,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     return { id: getLocalFallbackUserId() };
   }
 
-  const store = cookies();
+  const store = await cookies();
   const accessToken = store.get(AUTH_ACCESS_COOKIE)?.value;
   if (!accessToken) return null;
 

@@ -16,11 +16,12 @@ import { getEntriesByDates, getEntry, getProfile } from "@/lib/db";
 import { requirePageUser } from "@/lib/auth";
 
 type PageProps = {
-  params: { date: string };
+  params: Promise<{ date: string }>;
 };
 
 export default async function DayPage({ params }: PageProps) {
-  const date = decodeURIComponent(params.date);
+  const { date: rawDate } = await params;
+  const date = decodeURIComponent(rawDate);
   if (!isValidIsoDate(date)) notFound();
   await requirePageUser(`/day/${date}`);
 

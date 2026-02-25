@@ -5,12 +5,13 @@ import { getEntry, saveEntry } from "@/lib/db";
 
 export const runtime = "nodejs";
 
-type Params = { params: { date: string } };
+type Params = { params: Promise<{ date: string }> };
 
 export async function GET(_: Request, { params }: Params) {
   try {
     await requireCurrentUser();
-    const date = decodeURIComponent(params.date);
+    const { date: rawDate } = await params;
+    const date = decodeURIComponent(rawDate);
     if (!isValidIsoDate(date)) {
       return NextResponse.json({ error: "Invalid date format" }, { status: 400 });
     }
@@ -28,7 +29,8 @@ export async function GET(_: Request, { params }: Params) {
 export async function PUT(request: Request, { params }: Params) {
   try {
     await requireCurrentUser();
-    const date = decodeURIComponent(params.date);
+    const { date: rawDate } = await params;
+    const date = decodeURIComponent(rawDate);
     if (!isValidIsoDate(date)) {
       return NextResponse.json({ error: "Invalid date format" }, { status: 400 });
     }

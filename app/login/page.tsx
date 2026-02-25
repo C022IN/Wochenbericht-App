@@ -3,10 +3,12 @@ import { getCurrentUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
 type PageProps = {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<SearchParams>;
 };
 
-function readNext(searchParams?: PageProps["searchParams"]) {
+type SearchParams = Record<string, string | string[] | undefined>;
+
+function readNext(searchParams?: SearchParams) {
   const raw = searchParams?.next;
   const value = Array.isArray(raw) ? raw[0] : raw;
   if (!value || !value.startsWith("/") || value.startsWith("//")) return "/";
@@ -15,7 +17,8 @@ function readNext(searchParams?: PageProps["searchParams"]) {
 
 export default async function LoginPage({ searchParams }: PageProps) {
   const user = await getCurrentUser();
-  const nextPath = readNext(searchParams);
+  const resolvedSearchParams = await searchParams;
+  const nextPath = readNext(resolvedSearchParams);
   if (user) {
     redirect(nextPath || "/");
   }
