@@ -10,9 +10,10 @@ import {
 } from "./calendar";
 import { getCurrentUserId } from "./auth";
 import { getEntriesByDates, getProfile } from "./db";
-import { hasExternalExportWorker } from "./runtime";
+import { hasExternalExportWorker, isLocalExportBackendAvailable } from "./runtime";
 import { isSupabaseStorageEnabled, getExportDownloadUrl, uploadExportObject } from "./supabase-storage";
 import { loadTemplateBytes } from "./template";
+import { exportXlsxJs } from "./export-xlsx-js";
 import type { DailyEntry } from "./types";
 
 const EXPORTS_DIR = path.join(process.cwd(), "exports");
@@ -82,6 +83,8 @@ type FinalReport = {
   reportKw: number;
   isCarryOverToNextYear: boolean;
   xlsxUrl: string;
+  xlsxBase64?: string;
+  xlsxFilename?: string;
   pdfUrl?: string;
   warnings: string[];
   rowsWritten?: number;
@@ -535,6 +538,59 @@ async function exportViaWorker(prepared: PreparedSegment[], format: ExportFormat
     .filter((report): report is FinalReport => Boolean(report));
 }
 
+async function exportViaJs(prepared: PreparedSegment[]): Promise<FinalReport[]> {
+  const template = await loadTemplateBytes();
+  const reports: FinalReport[] = [];
+
+  for (const segment of prepared) {
+    const payload = segment.payloadWrapper.payload;
+    const jsResult = await exportXlsxJs(template.bytes, {
+      kw: payload.kw,
+      reportEnd: payload.reportEnd,
+      reportStartDe: payload.reportStartDe,
+      allWeekDates: payload.allWeekDates,
+      segmentDates: payload.segmentDates,
+      profile: payload.profile,
+      rows: payload.rows
+    });
+
+    const xlsxBase64 = jsResult.buffer.toString("base64");
+    const xlsxFilename = `${segment.baseName}.xlsx`;
+
+    let xlsxUrl = "";
+    if (isSupabaseStorageEnabled()) {
+      try {
+        const userId = await getCurrentUserId();
+        xlsxUrl = await uploadWorkerFileToStorage({
+          userId,
+          baseName: segment.baseName,
+          ext: "xlsx",
+          bytes: jsResult.buffer
+        });
+      } catch {
+        // Storage upload failed — fall back to base64 download
+      }
+    }
+
+    reports.push({
+      segmentKey: segment.segmentKey,
+      month: segment.month,
+      dates: segment.dates,
+      reportYear: segment.reportYear,
+      reportKw: segment.reportKw,
+      isCarryOverToNextYear: segment.isCarryOverToNextYear,
+      xlsxUrl,
+      xlsxBase64,
+      xlsxFilename,
+      warnings: jsResult.warnings,
+      rowsWritten: jsResult.rowsWritten,
+      rowsTruncated: jsResult.rowsTruncated
+    });
+  }
+
+  return reports;
+}
+
 export async function exportWeekReports(opts: {
   year: number;
   kw: number;
@@ -543,9 +599,14 @@ export async function exportWeekReports(opts: {
   const { year, kw, format } = opts;
   const { allWeekDates, isMonthSplit, prepared } = await buildPreparedSegments(year, kw);
 
-  const reports = hasExternalExportWorker()
-    ? await exportViaWorker(prepared, format)
-    : await exportLocal(prepared, format);
+  let reports: FinalReport[];
+  if (hasExternalExportWorker()) {
+    reports = await exportViaWorker(prepared, format);
+  } else if (isLocalExportBackendAvailable()) {
+    reports = await exportLocal(prepared, format);
+  } else {
+    reports = await exportViaJs(prepared);
+  }
 
   return {
     year,

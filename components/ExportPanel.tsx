@@ -3,22 +3,41 @@
 import { startTransition, useState } from "react";
 import { formatDeDate } from "@/lib/calendar";
 
+type ExportReport = {
+  segmentKey: string;
+  dates: string[];
+  reportYear: number;
+  reportKw: number;
+  isCarryOverToNextYear: boolean;
+  xlsxUrl: string;
+  xlsxBase64?: string;
+  xlsxFilename?: string;
+  pdfUrl?: string;
+  warnings: string[];
+  rowsWritten?: number;
+  rowsTruncated?: number;
+};
+
 type ExportResponse = {
   error?: string;
   isMonthSplit?: boolean;
-  reports?: Array<{
-    segmentKey: string;
-    dates: string[];
-    reportYear: number;
-    reportKw: number;
-    isCarryOverToNextYear: boolean;
-    xlsxUrl: string;
-    pdfUrl?: string;
-    warnings: string[];
-    rowsWritten?: number;
-    rowsTruncated?: number;
-  }>;
+  reports?: ExportReport[];
 };
+
+function downloadBase64(base64: string, filename: string) {
+  const byteChars = atob(base64);
+  const bytes = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+  const blob = new Blob([bytes], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export function ExportPanel({ year, kw }: { year: number; kw: number }) {
   const [loading, setLoading] = useState<"" | "xlsx" | "pdf" | "both">("");
@@ -111,9 +130,19 @@ export function ExportPanel({ year, kw }: { year: number; kw: number }) {
               </div>
 
               <div className="toolbar">
-                <a className="btn primary" href={report.xlsxUrl}>
-                  Excel
-                </a>
+                {report.xlsxUrl ? (
+                  <a className="btn primary" href={report.xlsxUrl}>
+                    Excel
+                  </a>
+                ) : report.xlsxBase64 ? (
+                  <button
+                    type="button"
+                    className="btn primary"
+                    onClick={() => downloadBase64(report.xlsxBase64!, report.xlsxFilename ?? `wochenbericht_KW${String(report.reportKw).padStart(2, "0")}.xlsx`)}
+                  >
+                    Excel
+                  </button>
+                ) : null}
                 {report.pdfUrl ? (
                   <a className="btn" href={report.pdfUrl}>
                     PDF

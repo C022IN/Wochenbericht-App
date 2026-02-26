@@ -42,14 +42,6 @@ export class AuthError extends Error {
   }
 }
 
-const USERNAME_OVERRIDE_BY_EMAIL: Record<string, string> = {
-  "collanjeo@gmail.com": "max.muster"
-};
-
-const EMAIL_OVERRIDE_BY_USERNAME: Record<string, string> = Object.fromEntries(
-  Object.entries(USERNAME_OVERRIDE_BY_EMAIL).map(([email, username]) => [username.toLowerCase(), email])
-) as Record<string, string>;
-
 function getLocalFallbackUserId() {
   return process.env.APP_DEFAULT_USER_ID?.trim() || "00000000-0000-0000-0000-000000000000";
 }
@@ -199,9 +191,6 @@ function getUsernameFromEmail(email: string) {
   const trimmed = email.trim();
   const atIndex = trimmed.indexOf("@");
   if (atIndex <= 0) return "";
-  const normalizedEmail = trimmed.toLowerCase();
-  const override = USERNAME_OVERRIDE_BY_EMAIL[normalizedEmail];
-  if (override) return override;
   return trimmed.slice(0, atIndex);
 }
 
@@ -216,17 +205,12 @@ async function resolveLoginEmail(identifier: string) {
   }
 
   const username = trimmed.toLowerCase();
-  const overrideEmail = EMAIL_OVERRIDE_BY_USERNAME[username];
-  if (overrideEmail) {
-    return overrideEmail;
-  }
   const response = await supabaseAdminAuthJson<SupabaseAdminUsersResponse>("/auth/v1/admin/users?page=1&per_page=1000");
   const users = Array.isArray(response.users) ? response.users : [];
   const matches = users.filter((user) => {
     if (typeof user.email !== "string" || !user.email) return false;
     const localPart = user.email.split("@", 1)[0]?.toLowerCase() ?? "";
-    const preferredUsername = getUsernameFromEmail(user.email).toLowerCase();
-    return localPart === username || preferredUsername === username;
+    return localPart === username;
   });
 
   if (matches.length > 1) {
@@ -302,6 +286,38 @@ export async function getUserFromAccessToken(accessToken: string): Promise<AuthU
   return { id: user.id, email: user.email ?? null };
 }
 
+async function tryRefreshSession(
+  refreshToken: string
+): Promise<{ access_token: string; refresh_token: string; expires_in?: number } | null> {
+  try {
+    const config = getSupabaseAuthConfig();
+    if (!config) return null;
+
+    const res = await fetch(`${config.url}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: config.anonKey
+      },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+      cache: "no-store"
+    });
+
+    if (!res.ok) return null;
+
+    const session = (await res.json()) as SupabaseAuthSessionResponse;
+    if (!session.access_token || !session.refresh_token) return null;
+
+    return {
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      expires_in: session.expires_in
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function getCurrentUser(): Promise<AuthUser | null> {
   if (!isSupabaseAuthEnabled()) {
     return { id: getLocalFallbackUserId() };
@@ -311,7 +327,29 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   const accessToken = store.get(AUTH_ACCESS_COOKIE)?.value;
   if (!accessToken) return null;
 
-  return getUserFromAccessToken(accessToken);
+  const user = await getUserFromAccessToken(accessToken);
+  if (user) return user;
+
+  // Access token expired or invalid — attempt silent refresh using refresh token.
+  const refreshToken = store.get(AUTH_REFRESH_COOKIE)?.value;
+  if (!refreshToken) return null;
+
+  const newSession = await tryRefreshSession(refreshToken);
+  if (!newSession) return null;
+
+  // Persist new tokens. This works in Route Handlers and Server Actions;
+  // in Server Components it may throw (harmless — we still return the refreshed user).
+  try {
+    await setSessionCookies({
+      access_token: newSession.access_token,
+      refresh_token: newSession.refresh_token,
+      expires_in: newSession.expires_in
+    });
+  } catch {
+    // Cannot set cookies during Server Component rendering — silently continue.
+  }
+
+  return getUserFromAccessToken(newSession.access_token);
 }
 
 export async function requireCurrentUser() {

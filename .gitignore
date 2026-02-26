@@ -10,6 +10,7 @@ node_modules/
 .next-dev/
 .vercel/
 .claude/
+*.tsbuildinfo
 .env.local
 .env.*.local
 data/

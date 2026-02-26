@@ -20,9 +20,6 @@ const DB_FILE = path.join(DATA_DIR, "wochenbericht-db.json");
 
 const SUPABASE_PROFILES_TABLE = process.env.SUPABASE_PROFILES_TABLE?.trim() || "wochenbericht_profiles";
 const SUPABASE_ENTRIES_TABLE = process.env.SUPABASE_ENTRIES_TABLE?.trim() || "wochenbericht_entries";
-const USERNAME_OVERRIDE_BY_EMAIL: Record<string, string> = {
-  "collanjeo@gmail.com": "max.muster"
-};
 
 function isSupabaseDbEnabled() {
   if (process.env.DB_BACKEND?.trim() === "local") return false;
@@ -121,12 +118,6 @@ function getEmailLocalPart(email?: string | null) {
   return localPart;
 }
 
-function getPreferredUsernameFromEmail(email?: string | null) {
-  const normalizedEmail = normalizeOptionalText(email)?.toLowerCase() ?? "";
-  if (!normalizedEmail) return "";
-  return USERNAME_OVERRIDE_BY_EMAIL[normalizedEmail] ?? getEmailLocalPart(normalizedEmail);
-}
-
 function capitalizeNamePart(value: string) {
   if (!value) return "";
   return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
@@ -167,7 +158,7 @@ function buildSupabaseProfileColumns(profile: UserProfile, email?: string | null
   const normalizedEmail = normalizeOptionalText(email);
   const firstName = normalizeOptionalText(profile.vorname);
   const lastName = normalizeOptionalText(profile.name);
-  const username = normalizeOptionalText(getPreferredUsernameFromEmail(normalizedEmail));
+  const username = normalizeOptionalText(getEmailLocalPart(normalizedEmail));
   const displayName = normalizeOptionalText([firstName, lastName].filter(Boolean).join(" "));
 
   return {

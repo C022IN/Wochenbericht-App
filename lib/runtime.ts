@@ -17,6 +17,11 @@ export function isLocalExportBackendAvailable() {
   return true;
 }
 
+/** JS-based export (exceljs) runs in any Node.js environment including Vercel. */
+export function isJsExportAvailable() {
+  return true;
+}
+
 export function isExportGenerationAvailable() {
-  return hasExternalExportWorker() || isLocalExportBackendAvailable();
+  return hasExternalExportWorker() || isLocalExportBackendAvailable() || isJsExportAvailable();
 }
