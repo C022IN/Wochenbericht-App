@@ -140,9 +140,13 @@ export async function exportXlsxJs(
   ws.getCell("U50").value = payload.carData.kennzeichen || null;
   ws.getCell("V50").value = payload.carData.kennzeichen2 || null;
   const kmStand = parseDecimal(payload.carData.kmStand);
-  ws.getCell("U51").value = kmStand !== null ? kmStand : (payload.carData.kmStand || null);
+  const kmStandCell = ws.getCell("U51");
+  kmStandCell.value = kmStand !== null ? kmStand : (payload.carData.kmStand || null);
+  if (kmStand !== null) kmStandCell.numFmt = "#,##0.##";
   const kmGefahren = parseDecimal(payload.carData.kmGefahren);
-  ws.getCell("V51").value = kmGefahren !== null ? kmGefahren : (payload.carData.kmGefahren || null);
+  const kmGefahrenCell = ws.getCell("V51");
+  kmGefahrenCell.value = kmGefahren !== null ? kmGefahren : (payload.carData.kmGefahren || null);
+  if (kmGefahren !== null) kmGefahrenCell.numFmt = "#,##0.##";
 
   // --- Row 9: day-of-month headers ---
   const segmentDates = new Set(payload.segmentDates);
@@ -189,15 +193,23 @@ export async function exportXlsxJs(
 
     const pauseOverride = parseDecimal(rowData.pauseOverride);
     if (typeof pauseOverride === "number") {
-      ws.getCell(`G${rowNo}`).value = pauseOverride;
+      const pauseCell = ws.getCell(`G${rowNo}`);
+      pauseCell.value = pauseOverride;
+      pauseCell.numFmt = "0.##";
     } else if (!rowData.beginn && !rowData.ende && typeof dayCellValue === "number") {
       const p = inferPauseFromNetHours(dayCellValue);
-      if (typeof p === "number" && p > 0) ws.getCell(`G${rowNo}`).value = p;
+      if (typeof p === "number" && p > 0) {
+        const pauseCell = ws.getCell(`G${rowNo}`);
+        pauseCell.value = p;
+        pauseCell.numFmt = "0.##";
+      }
     }
 
     if (weekdayCol !== null) {
       if (typeof dayCellValue === "number" && dayCellValue >= 0) {
-        ws.getCell(`${weekdayCol}${rowNo}`).value = dayCellValue;
+        const hourCell = ws.getCell(`${weekdayCol}${rowNo}`);
+        hourCell.value = dayCellValue;
+        hourCell.numFmt = "0.##";
       } else if (typeof dayCellValue === "string" && dayCellValue.trim()) {
         const marker = dayCellValue.trim();
         ws.getCell(`${weekdayCol}${rowNo}`).value = marker.toLowerCase() === "x" ? "x" : marker;
@@ -208,12 +220,24 @@ export async function exportXlsxJs(
     ws.getCell(`R${rowNo}`).value = rowData.ausloese || null;
 
     const zulage = parseDecimal(rowData.zulage);
-    ws.getCell(`S${rowNo}`).value = zulage !== null ? zulage : null;
+    if (zulage !== null) {
+      const zulageCell = ws.getCell(`S${rowNo}`);
+      zulageCell.value = zulage;
+      zulageCell.numFmt = "0.##";
+    } else {
+      ws.getCell(`S${rowNo}`).value = null;
+    }
     ws.getCell(`T${rowNo}`).value = rowData.projektnummer || null;
     ws.getCell(`U${rowNo}`).value = rowData.kabelschachtInfo || null;
 
     const smNr = parseDecimal(rowData.smNr);
-    ws.getCell(`V${rowNo}`).value = smNr !== null ? smNr : rowData.smNr || null;
+    if (smNr !== null) {
+      const smNrCell = ws.getCell(`V${rowNo}`);
+      smNrCell.value = smNr;
+      smNrCell.numFmt = "0.##";
+    } else {
+      ws.getCell(`V${rowNo}`).value = rowData.smNr || null;
+    }
 
     ws.getCell(`W${rowNo}`).value = rowData.bauleiter || null;
     ws.getCell(`X${rowNo}`).value = rowData.arbeitskollege || null;
