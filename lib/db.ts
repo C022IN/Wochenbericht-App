@@ -10,10 +10,11 @@ import {
   EMPTY_PROFILE,
   type AppDb,
   type DailyEntry,
-  type DailyLine,
   type UserProfile,
+  type WeekCarData,
   type WeekSummary
 } from "./types";
+import { hasMeaningfulLineData } from "./entry-utils";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DB_FILE = path.join(DATA_DIR, "wochenbericht-db.json");
@@ -94,6 +95,24 @@ function sanitizeEntry(date: string, entry: unknown): DailyEntry {
   };
 }
 
+function sanitizeWeekCarData(raw: unknown): WeekCarData {
+  const s = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return {
+    kennzeichen2: typeof s.kennzeichen2 === "string" ? s.kennzeichen2 : "",
+    kmStand: typeof s.kmStand === "string" ? s.kmStand : "",
+    kmGefahren: typeof s.kmGefahren === "string" ? s.kmGefahren : ""
+  };
+}
+
+function sanitizeWeekData(raw: unknown): Record<string, WeekCarData> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const result: Record<string, WeekCarData> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof key === "string") result[key] = sanitizeWeekCarData(value);
+  }
+  return result;
+}
+
 function sanitizeProfile(profile: unknown): UserProfile {
   const source = (profile && typeof profile === "object" ? profile : {}) as Record<string, unknown>;
   return {
@@ -101,8 +120,14 @@ function sanitizeProfile(profile: unknown): UserProfile {
     vorname: typeof source.vorname === "string" ? source.vorname : "",
     defaultArbeitsstaetteProjekte:
       typeof source.defaultArbeitsstaetteProjekte === "string" ? source.defaultArbeitsstaetteProjekte : "",
-    defaultArtDerArbeit: typeof source.defaultArtDerArbeit === "string" ? source.defaultArtDerArbeit : ""
+    defaultArtDerArbeit: typeof source.defaultArtDerArbeit === "string" ? source.defaultArtDerArbeit : "",
+    kennzeichen: typeof source.kennzeichen === "string" ? source.kennzeichen : "",
+    weekData: sanitizeWeekData(source.weekData)
   };
+}
+
+export function makeWeekKey(year: number, kw: number): string {
+  return `${year}-${String(kw).padStart(2, "0")}`;
 }
 
 function normalizeOptionalText(value: unknown) {
@@ -191,29 +216,6 @@ function createInitialProfileFromEmail(email?: string | null): UserProfile {
     vorname: derived.vorname,
     name: derived.name
   });
-}
-
-function hasMeaningfulLineData(line: DailyLine) {
-  const hasExplicitStatusCode = (() => {
-    const code = line.lohnType.trim().toUpperCase();
-    return Boolean(code && code !== "S");
-  })();
-
-  return Boolean(
-    line.siteNameOrt.trim() ||
-      line.beginn.trim() ||
-      line.ende.trim() ||
-      line.pauseOverride.trim() ||
-      line.dayHoursOverride.trim() ||
-      hasExplicitStatusCode ||
-      line.ausloese.trim() ||
-      line.zulage.trim() ||
-      line.projektnummer.trim() ||
-      line.kabelschachtInfo.trim() ||
-      line.smNr.trim() ||
-      line.bauleiter.trim() ||
-      line.arbeitskollege.trim()
-  );
 }
 
 async function readLocalDb(): Promise<AppDb> {
@@ -397,7 +399,11 @@ export async function saveProfile(profile: Partial<AppDb["profile"]>) {
     defaultArtDerArbeit:
       typeof profile.defaultArtDerArbeit === "string"
         ? profile.defaultArtDerArbeit
-        : currentProfile.defaultArtDerArbeit
+        : currentProfile.defaultArtDerArbeit,
+    kennzeichen: typeof profile.kennzeichen === "string" ? profile.kennzeichen : currentProfile.kennzeichen,
+    weekData: typeof profile.weekData === "object" && profile.weekData !== null
+      ? sanitizeWeekData(profile.weekData)
+      : currentProfile.weekData
   };
 
   if (!isSupabaseDbEnabled()) {
@@ -490,4 +496,26 @@ export async function listWeekSummaries(year: number): Promise<WeekSummary[]> {
   }
 
   return results;
+}
+
+export async function getWeekCarData(year: number, kw: number): Promise<WeekCarData> {
+  const profile = await getProfile();
+  const key = makeWeekKey(year, kw);
+  return sanitizeWeekCarData(profile.weekData?.[key]);
+}
+
+export async function saveWeekCarData(year: number, kw: number, data: Partial<WeekCarData>): Promise<WeekCarData> {
+  const profile = await getProfile();
+  const key = makeWeekKey(year, kw);
+  const current = sanitizeWeekCarData(profile.weekData?.[key]);
+  const updated: WeekCarData = {
+    kennzeichen2: typeof data.kennzeichen2 === "string" ? data.kennzeichen2 : current.kennzeichen2,
+    kmStand: typeof data.kmStand === "string" ? data.kmStand : current.kmStand,
+    kmGefahren: typeof data.kmGefahren === "string" ? data.kmGefahren : current.kmGefahren
+  };
+  await saveProfile({
+    ...profile,
+    weekData: { ...profile.weekData, [key]: updated }
+  });
+  return updated;
 }

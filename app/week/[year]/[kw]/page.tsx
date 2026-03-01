@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ExportPanel } from "@/components/ExportPanel";
+import { WeekCarDataForm } from "@/components/WeekCarDataForm";
 import {
   addDays,
   formatDeDate,
@@ -14,7 +15,8 @@ import {
   splitWeekByMonth,
   weekDatesToInfo
 } from "@/lib/calendar";
-import { getEntriesByDates, getWeekSummary } from "@/lib/db";
+import { getEntriesByDates, getProfile, getWeekCarData, getWeekSummary } from "@/lib/db";
+import { countMeaningfulLines } from "@/lib/entry-utils";
 import { requirePageUser } from "@/lib/auth";
 
 type PageProps = {
@@ -39,7 +41,12 @@ export default async function WeekPage({ params }: PageProps) {
   const { year, kw } = parsed;
   const weekDates = getIsoWeekDates(year, kw);
   const isoDates = weekDates.map((d) => d.toISOString().slice(0, 10));
-  const [entriesByDate, summary] = await Promise.all([getEntriesByDates(isoDates), getWeekSummary(year, kw)]);
+  const [entriesByDate, summary, profile, carData] = await Promise.all([
+    getEntriesByDates(isoDates),
+    getWeekSummary(year, kw),
+    getProfile(),
+    getWeekCarData(year, kw)
+  ]);
   const dayInfos = weekDatesToInfo(weekDates);
   const segments = splitWeekByMonth(weekDates);
   const displayWeek = getWeekDisplayInfo(year, kw, weekDates);
@@ -80,7 +87,7 @@ export default async function WeekPage({ params }: PageProps) {
           <h2>Tage</h2>
           <div className="toolbar">
             <span className={summary.isMonthSplit ? "pill warn" : "pill ok"}>
-              {summary.isMonthSplit ? "Split" : "OK"}
+              {summary.isMonthSplit ? "Geteilt" : "OK"}
             </span>
             <span className="pill">{summary.filledDays}/7</span>
           </div>
@@ -89,16 +96,7 @@ export default async function WeekPage({ params }: PageProps) {
         <div className="day-strip" style={{ marginTop: "0.8rem" }}>
           {dayInfos.map((day) => {
             const entry = entriesByDate[day.date];
-            const lineCount =
-              entry?.lines.filter((line) => {
-                return (
-                  line.siteNameOrt.trim() ||
-                  line.beginn.trim() ||
-                  line.ende.trim() ||
-                  line.projektnummer.trim() ||
-                  line.smNr.trim()
-                );
-              }).length ?? 0;
+            const lineCount = countMeaningfulLines(entry);
 
             const isToday = day.date === todayIso;
             const classes = ["day-chip", lineCount ? "active" : "", isToday ? "today" : ""]
@@ -149,6 +147,13 @@ export default async function WeekPage({ params }: PageProps) {
 
         <ExportPanel year={year} kw={kw} />
       </section>
+
+      <WeekCarDataForm
+        year={year}
+        kw={kw}
+        initialCarData={carData}
+        defaultKennzeichen={profile.kennzeichen}
+      />
     </main>
   );
 }

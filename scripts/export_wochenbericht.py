@@ -116,13 +116,21 @@ def compute_day_cell_value(row: dict):
 def write_header(ws, payload):
     ws["H1"] = int(payload["kw"])
     ws["L1"] = payload["reportStartDe"]  # Template uses text formatting in L1.
-    ws["R1"] = parse_iso_date(payload["reportEnd"])
+    ws["R1"] = payload.get("reportEndDe") or parse_iso_date(payload["reportEnd"])
 
     profile = payload["profile"]
     ws["D3"] = profile.get("name", "")
     ws["P3"] = profile.get("vorname", "")
     ws["D5"] = profile.get("arbeitsstaetteProjekte", "")
     ws["D6"] = profile.get("artDerArbeit", "")
+
+    car = payload.get("carData", {})
+    ws["U50"] = car.get("kennzeichen") or None
+    ws["V50"] = car.get("kennzeichen2") or None
+    km_stand = parse_decimal(car.get("kmStand", "")) if isinstance(car.get("kmStand"), str) else car.get("kmStand")
+    ws["U51"] = km_stand if km_stand is not None else (car.get("kmStand") or None)
+    km_gefahren = parse_decimal(car.get("kmGefahren", "")) if isinstance(car.get("kmGefahren"), str) else car.get("kmGefahren")
+    ws["V51"] = km_gefahren if km_gefahren is not None else (car.get("kmGefahren") or None)
 
 
 def clear_and_write_date_row(ws, payload):

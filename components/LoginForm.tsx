@@ -18,11 +18,11 @@ export function LoginForm({ nextPath = "/" }: { nextPath?: string }) {
         body: JSON.stringify({ identifier: email, password })
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(data.error || "Auth failed");
+      if (!res.ok) throw new Error(data.error || "Anmeldung fehlgeschlagen");
 
       window.location.href = nextPath || "/";
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Auth failed");
+      setError(e instanceof Error ? e.message : "Anmeldung fehlgeschlagen");
     } finally {
       setLoading(false);
     }

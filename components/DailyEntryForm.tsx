@@ -137,7 +137,7 @@ export function DailyEntryForm({
         } catch {
           data = null;
         }
-        if (!res.ok) throw new Error(data?.error || "Autosave failed");
+        if (!res.ok) throw new Error(data?.error || "Autospeichern fehlgeschlagen");
 
         startTransition(() => {
           setSaveState("saved");
@@ -145,8 +145,8 @@ export function DailyEntryForm({
         window.setTimeout(() => setSaveState("idle"), 1200);
       } catch (e) {
         setSaveState("error");
-        const message = e instanceof Error ? e.message : "Autosave failed";
-        setError(message === "Failed to fetch" ? "Autosave failed (server unreachable)" : message);
+        const message = e instanceof Error ? e.message : "Autospeichern fehlgeschlagen";
+        setError(message === "Failed to fetch" ? "Autospeichern fehlgeschlagen (Server nicht erreichbar)" : message);
       }
     }, 650);
 

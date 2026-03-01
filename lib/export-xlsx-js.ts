@@ -68,6 +68,7 @@ export type JsExportPayload = {
   kw: number;
   reportEnd: string; // ISO date, e.g. "2026-02-28"
   reportStartDe: string; // German formatted string, e.g. "23.02.2026"
+  reportEndDe: string; // German formatted string, e.g. "28.02.2026"
   allWeekDates: string[];
   segmentDates: string[];
   profile: {
@@ -77,6 +78,12 @@ export type JsExportPayload = {
     artDerArbeit: string;
   };
   rows: ExportRow[];
+  carData: {
+    kennzeichen: string;   // → U50
+    kennzeichen2: string;  // → V50
+    kmStand: string;       // → U51
+    kmGefahren: string;    // → V51
+  };
 };
 
 function computeDayCellValue(row: ExportRow): number | string | null {
@@ -122,12 +129,20 @@ export async function exportXlsxJs(
   // --- Header ---
   ws.getCell("H1").value = payload.kw;
   ws.getCell("L1").value = payload.reportStartDe;
-  ws.getCell("R1").value = new Date(`${payload.reportEnd}T00:00:00Z`);
+  ws.getCell("R1").value = payload.reportEndDe;
 
   ws.getCell("D3").value = payload.profile.name;
   ws.getCell("P3").value = payload.profile.vorname;
   ws.getCell("D5").value = payload.profile.arbeitsstaetteProjekte;
   ws.getCell("D6").value = payload.profile.artDerArbeit;
+
+  // --- Footer: car data (rows 50–51) ---
+  ws.getCell("U50").value = payload.carData.kennzeichen || null;
+  ws.getCell("V50").value = payload.carData.kennzeichen2 || null;
+  const kmStand = parseDecimal(payload.carData.kmStand);
+  ws.getCell("U51").value = kmStand !== null ? kmStand : (payload.carData.kmStand || null);
+  const kmGefahren = parseDecimal(payload.carData.kmGefahren);
+  ws.getCell("V51").value = kmGefahren !== null ? kmGefahren : (payload.carData.kmGefahren || null);
 
   // --- Row 9: day-of-month headers ---
   const segmentDates = new Set(payload.segmentDates);

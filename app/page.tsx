@@ -10,6 +10,7 @@ import {
 import { listWeekSummaries, getProfile } from "@/lib/db";
 import { getTemplateStatus } from "@/lib/template";
 import { ProfileCard } from "@/components/ProfileCard";
+import { WeekGridPanel, type WeekDisplayItem } from "@/components/WeekGridPanel";
 import { requirePageUser } from "@/lib/auth";
 
 type PageProps = {
@@ -40,6 +41,33 @@ export default async function HomePage({ searchParams }: PageProps) {
   const todayWeek = getIsoWeek(new Date());
   const totalWeeks = getIsoWeeksInYear(year);
   const yearOptions = [year - 1, year, year + 1];
+
+  let currentIdx = 0;
+  const weekItems: WeekDisplayItem[] = weekSummaries.map((summary, i) => {
+    const weekDateObjects = getIsoWeekDates(summary.year, summary.kw);
+    const weekDates = weekDateObjects.map((d) => d.toISOString().slice(0, 10));
+    const displayWeek = getWeekDisplayInfo(summary.year, summary.kw, weekDateObjects);
+    const isCurrentWeek = summary.year === todayWeek.year && summary.kw === todayWeek.kw;
+    if (isCurrentWeek) currentIdx = i;
+    const splitLabel =
+      summary.segments.length > 1
+        ? `${getMonthLabelDe(summary.segments[0].month)} / ${getMonthLabelDe(summary.segments[1].month)}`
+        : getMonthLabelDe(summary.segments[0].month);
+    return {
+      year: summary.year,
+      kw: summary.kw,
+      displayKw: displayWeek.displayKw,
+      displayYear: displayWeek.displayYear,
+      isCarryOverToNextYear: displayWeek.isCarryOverToNextYear,
+      isCurrentWeek,
+      isMonthSplit: summary.isMonthSplit,
+      splitLabel,
+      first: formatDeDate(weekDates[0]),
+      last: formatDeDate(weekDates[6]),
+      filledDays: summary.filledDays,
+      pct: Math.round((summary.filledDays / 7) * 100)
+    };
+  });
 
   return (
     <main className="shell grid" style={{ gap: "1rem" }}>
@@ -81,53 +109,7 @@ export default async function HomePage({ searchParams }: PageProps) {
             </div>
           </div>
 
-          <div className="week-grid" style={{ marginTop: "0.8rem" }}>
-            {weekSummaries.map((summary) => {
-              const weekDateObjects = getIsoWeekDates(summary.year, summary.kw);
-              const weekDates = weekDateObjects.map((d) => d.toISOString().slice(0, 10));
-              const first = weekDates[0];
-              const last = weekDates[6];
-              const splitLabel =
-                summary.segments.length > 1
-                  ? `${getMonthLabelDe(summary.segments[0].month)} / ${getMonthLabelDe(summary.segments[1].month)}`
-                  : getMonthLabelDe(summary.segments[0].month);
-              const pct = Math.round((summary.filledDays / 7) * 100);
-              const isCurrentWeek = summary.year === todayWeek.year && summary.kw === todayWeek.kw;
-              const displayWeek = getWeekDisplayInfo(summary.year, summary.kw, weekDateObjects);
-
-              return (
-                <Link
-                  key={`${summary.year}-${summary.kw}`}
-                  className={`week-card${isCurrentWeek ? " current-week" : ""}`}
-                  href={`/week/${summary.year}/${summary.kw}`}
-                >
-                  <div className="toolbar spread">
-                    <strong>
-                      KW {String(displayWeek.displayKw).padStart(2, "0")}
-                      {displayWeek.isCarryOverToNextYear ? ` (${displayWeek.displayYear})` : ""}
-                    </strong>
-                    {summary.isMonthSplit ? <span className="pill warn">Split</span> : <span className="pill ok">OK</span>}
-                  </div>
-
-                  <div className="week-meta">
-                    <span>{formatDeDate(first)}</span>
-                    <span>{formatDeDate(last)}</span>
-                  </div>
-
-                  <div className="small">{splitLabel}</div>
-
-                  <div className="progress" aria-label={`Fortschritt KW ${displayWeek.displayKw}`}>
-                    <span style={{ width: `${pct}%` }} />
-                  </div>
-
-                  <div className="week-meta">
-                    <span>{summary.filledDays}/7 Tage</span>
-                    <span>{pct}%</span>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
+          <WeekGridPanel items={weekItems} currentIdx={currentIdx} />
         </section>
 
         <div className="grid" style={{ alignContent: "start" }}>

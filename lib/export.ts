@@ -4,12 +4,13 @@ import path from "node:path";
 import {
   formatDeDate,
   getIsoWeekDates,
+  getMonthLabelDe,
   getSegmentWeekDisplayInfo,
   getWeekdayColumnIndexForIsoDate,
   splitWeekByMonth
 } from "./calendar";
 import { getCurrentUserId } from "./auth";
-import { getEntriesByDates, getProfile } from "./db";
+import { getEntriesByDates, getProfile, getWeekCarData } from "./db";
 import { hasExternalExportWorker, isLocalExportBackendAvailable } from "./runtime";
 import { isSupabaseStorageEnabled, getExportDownloadUrl, uploadExportObject } from "./supabase-storage";
 import { loadTemplateBytes } from "./template";
@@ -59,6 +60,12 @@ type SegmentPayload = {
   segmentDateColumnIndexes: Record<string, number>;
   reportStartDe: string;
   reportEndDe: string;
+  carData: {
+    kennzeichen: string;
+    kennzeichen2: string;
+    kmStand: string;
+    kmGefahren: string;
+  };
 };
 
 type PreparedSegment = {
@@ -110,6 +117,10 @@ function ensureFileNameSafe(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "_");
 }
 
+function ensureDownloadBaseName(value: string): string {
+  return value.replace(/[<>:"/\\|?*\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function ensureObjectPathSafe(value: string): string {
   return value.replace(/[^a-zA-Z0-9/_-]+/g, "_");
 }
@@ -121,6 +132,12 @@ async function ensureDirs() {
 
 function toIsoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
+}
+
+function buildReportBaseName(opts: { month: number; year: number; kw: number }) {
+  return ensureDownloadBaseName(
+    `AXIANS OFM Wochenbericht ${getMonthLabelDe(opts.month)} ${opts.year} KW ${opts.kw}`
+  );
 }
 
 function collectSegmentHeaderValues(
@@ -209,8 +226,11 @@ async function buildPreparedSegments(year: number, kw: number) {
   const weekDates = getIsoWeekDates(year, kw);
   const allWeekDates = weekDates.map(toIsoDate);
   const segments = splitWeekByMonth(weekDates);
-  const entries = await getEntriesByDates(allWeekDates);
-  const profile = await getProfile();
+  const [entries, profile, weekCarData] = await Promise.all([
+    getEntriesByDates(allWeekDates),
+    getProfile(),
+    getWeekCarData(year, kw)
+  ]);
 
   const prepared: PreparedSegment[] = [];
 
@@ -224,13 +244,11 @@ async function buildPreparedSegments(year: number, kw: number) {
     const rows = flattenRowsForSegment(entries, segment.dates);
     const segmentWeekDisplay = getSegmentWeekDisplayInfo(year, kw, segment.year);
 
-    const dateSuffix =
-      segment.dates.length === 1
-        ? segment.dates[0]
-        : `${segment.dates[0]}_${segment.dates[segment.dates.length - 1]}`;
-    const baseName = ensureFileNameSafe(
-      `wochenbericht_${segmentWeekDisplay.displayYear}_KW${String(segmentWeekDisplay.displayKw).padStart(2, "0")}_${dateSuffix}`
-    );
+    const baseName = buildReportBaseName({
+      month: segment.month,
+      year: segment.year,
+      kw: segmentWeekDisplay.displayKw
+    });
 
     prepared.push({
       baseName,
@@ -264,7 +282,13 @@ async function buildPreparedSegments(year: number, kw: number) {
             segment.dates.map((d) => [d, getWeekdayColumnIndexForIsoDate(d)])
           ),
           reportStartDe: formatDeDate(segment.startDate),
-          reportEndDe: formatDeDate(segment.endDate)
+          reportEndDe: formatDeDate(segment.endDate),
+          carData: {
+            kennzeichen: profile.kennzeichen,
+            kennzeichen2: weekCarData.kennzeichen2,
+            kmStand: weekCarData.kmStand,
+            kmGefahren: weekCarData.kmGefahren
+          }
         }
       }
     });
@@ -378,6 +402,7 @@ async function exportLocal(prepared: PreparedSegment[], format: ExportFormat): P
       reportKw: segment.reportKw,
       isCarryOverToNextYear: segment.isCarryOverToNextYear,
       xlsxUrl: `/api/exports/${encodeURIComponent(path.basename(xlsxPath))}`,
+      xlsxFilename: path.basename(xlsxPath),
       warnings: pyResult.warnings ?? [],
       rowsWritten: pyResult.rows_written,
       rowsTruncated: pyResult.rows_truncated
@@ -526,6 +551,7 @@ async function exportViaWorker(prepared: PreparedSegment[], format: ExportFormat
       reportKw: segment.reportKw,
       isCarryOverToNextYear: segment.isCarryOverToNextYear,
       xlsxUrl,
+      xlsxFilename: `${segment.baseName}.xlsx`,
       pdfUrl,
       warnings: workerReport.warnings ?? [],
       rowsWritten: workerReport.rowsWritten,
@@ -548,10 +574,12 @@ async function exportViaJs(prepared: PreparedSegment[]): Promise<FinalReport[]> 
       kw: payload.kw,
       reportEnd: payload.reportEnd,
       reportStartDe: payload.reportStartDe,
+      reportEndDe: payload.reportEndDe,
       allWeekDates: payload.allWeekDates,
       segmentDates: payload.segmentDates,
       profile: payload.profile,
-      rows: payload.rows
+      rows: payload.rows,
+      carData: payload.carData
     });
 
     const xlsxBase64 = jsResult.buffer.toString("base64");

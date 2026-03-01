@@ -64,10 +64,10 @@ export function ExportPanel({ year, kw }: { year: number; kw: number }) {
         body: JSON.stringify({ year, kw, format })
       });
       const data = (await res.json()) as ExportResponse;
-      if (!res.ok) throw new Error(data.error || "Export failed");
+      if (!res.ok) throw new Error(data.error || "Export fehlgeschlagen");
       startTransition(() => setResult(data));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Export failed");
+      setError(e instanceof Error ? e.message : "Export fehlgeschlagen");
     } finally {
       setLoading("");
     }

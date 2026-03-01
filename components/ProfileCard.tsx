@@ -18,7 +18,7 @@ export function ProfileCard({ initialProfile }: { initialProfile: UserProfile })
         body: JSON.stringify(profile)
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Save failed");
+      if (!res.ok) throw new Error(data.error || "Speichern fehlgeschlagen");
 
       startTransition(() => {
         setProfile(data.profile);
@@ -27,7 +27,7 @@ export function ProfileCard({ initialProfile }: { initialProfile: UserProfile })
       window.setTimeout(() => setStatus("idle"), 1200);
     } catch (e) {
       setStatus("error");
-      setError(e instanceof Error ? e.message : "Save failed");
+      setError(e instanceof Error ? e.message : "Speichern fehlgeschlagen");
     }
   }
 
@@ -66,6 +66,14 @@ export function ProfileCard({ initialProfile }: { initialProfile: UserProfile })
           <input
             value={profile.defaultArtDerArbeit}
             onChange={(e) => setProfile((p) => ({ ...p, defaultArtDerArbeit: e.target.value }))}
+          />
+        </label>
+        <label>
+          <span className="label-title">KFZ-Kennzeichen (Standard)</span>
+          <input
+            placeholder="z.B. LIF-B123"
+            value={profile.kennzeichen}
+            onChange={(e) => setProfile((p) => ({ ...p, kennzeichen: e.target.value }))}
           />
         </label>
       </div>

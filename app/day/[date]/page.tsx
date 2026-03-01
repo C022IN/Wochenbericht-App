@@ -13,6 +13,7 @@ import {
   weekDatesToInfo
 } from "@/lib/calendar";
 import { getEntriesByDates, getEntry, getProfile } from "@/lib/db";
+import { entryHasMeaningfulContent } from "@/lib/entry-utils";
 import { requirePageUser } from "@/lib/auth";
 
 type PageProps = {
@@ -68,9 +69,7 @@ export default async function DayPage({ params }: PageProps) {
         <h2>Woche</h2>
         <div className="day-strip" style={{ marginTop: "0.8rem" }}>
           {weekDatesToInfo(weekDates).map((day) => {
-            const hasContent = Boolean(
-              entriesByDate[day.date]?.lines?.some((line) => line.siteNameOrt || line.beginn || line.ende)
-            );
+            const hasContent = entryHasMeaningfulContent(entriesByDate[day.date]);
             const isCurrent = day.date === date;
             const isToday = day.date === todayIso;
             const classes = ["day-chip", isCurrent ? "active" : "", isToday ? "today" : ""]

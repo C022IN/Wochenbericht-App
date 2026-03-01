@@ -1,8 +1,16 @@
+export type WeekCarData = {
+  kennzeichen2: string;  // second car plate (optional)
+  kmStand: string;       // odometer reading → U51
+  kmGefahren: string;    // km driven during week → V51
+};
+
 export type UserProfile = {
   name: string;
   vorname: string;
   defaultArbeitsstaetteProjekte: string;
   defaultArtDerArbeit: string;
+  kennzeichen: string;                        // primary car plate → U50
+  weekData: Record<string, WeekCarData>;      // keyed "YYYY-WW", e.g. "2026-09"
 };
 
 export type DailyLineType = "arbeitszeit" | "baustelle";
@@ -70,7 +78,9 @@ export const EMPTY_PROFILE: UserProfile = {
   name: "",
   vorname: "",
   defaultArbeitsstaetteProjekte: "",
-  defaultArtDerArbeit: ""
+  defaultArtDerArbeit: "",
+  kennzeichen: "",
+  weekData: {}
 };
 
 export const EMPTY_DAILY_LINE = (): DailyLine => ({

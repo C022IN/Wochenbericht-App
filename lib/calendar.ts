@@ -4,7 +4,7 @@ const WEEKDAY_LABELS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"] as const;
 const MONTH_LABELS_DE = [
   "Januar",
   "Februar",
-  "Maerz",
+  "März",
   "April",
   "Mai",
   "Juni",
