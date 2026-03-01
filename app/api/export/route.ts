@@ -43,8 +43,9 @@ export async function POST(request: Request) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
+    console.error("[/api/export]", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Export failed" },
+      { error: error instanceof Error ? error.message : "Export fehlgeschlagen" },
       { status: 500 }
     );
   }
