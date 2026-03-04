@@ -4,6 +4,54 @@ const WEEKDAY_COLS = ["H", "I", "J", "K", "L", "M", "N"] as const;
 const DATA_ROW_START = 10;
 const DATA_ROW_END = 49;
 
+function hasFirstFormula(formulae: unknown): formulae is string[] {
+  return (
+    Array.isArray(formulae) &&
+    formulae.length > 0 &&
+    typeof formulae[0] === "string" &&
+    formulae[0].trim().length > 0
+  );
+}
+
+function sanitizeConditionalFormatting(workbook: Workbook): number {
+  const model = workbook.model as {
+    worksheets?: Array<{
+      conditionalFormattings?: Array<{
+        rules?: Array<{
+          type?: string;
+          formulae?: unknown;
+        }>;
+      }>;
+    }>;
+  };
+
+  if (!Array.isArray(model.worksheets)) return 0;
+
+  let removedRules = 0;
+
+  for (const worksheet of model.worksheets) {
+    if (!Array.isArray(worksheet.conditionalFormattings)) continue;
+
+    worksheet.conditionalFormattings = worksheet.conditionalFormattings
+      .map((cf) => {
+        if (!Array.isArray(cf?.rules)) return cf;
+        const before = cf.rules.length;
+        cf.rules = cf.rules.filter((rule) => {
+          if (!rule || typeof rule !== "object") return false;
+          if (rule.type === "expression" || rule.type === "cellIs") {
+            return hasFirstFormula(rule.formulae);
+          }
+          return true;
+        });
+        removedRules += before - cf.rules.length;
+        return cf;
+      })
+      .filter((cf) => (Array.isArray(cf?.rules) ? cf.rules.length > 0 : true));
+  }
+
+  return removedRules;
+}
+
 function parseDecimal(value: string): number | string | null {
   if (!value || typeof value !== "string") return null;
   const txt = value.trim().replace(",", ".");
@@ -122,10 +170,10 @@ export async function exportXlsxJs(
 ): Promise<{ buffer: Buffer; rowsWritten: number; rowsTruncated: number; warnings: string[] }> {
   const workbook = new Workbook();
   await workbook.xlsx.load(templateBuffer);
+  const removedCfRules = sanitizeConditionalFormatting(workbook);
 
-  // ExcelJS cannot serialize certain formula types (shared/array formulas, named ranges)
-  // and crashes with "Cannot read properties of undefined (reading '0')".
-  // Strip all formulas, keeping their cached result values so template totals remain.
+  // ExcelJS can choke on template-level formula/CF constructs while serializing.
+  // Strip cell formulas, keeping cached result values so template totals remain.
   workbook.eachSheet((sheet) => {
     sheet.eachRow({ includeEmpty: false }, (row) => {
       row.eachCell({ includeEmpty: false }, (cell) => {
@@ -259,6 +307,11 @@ export async function exportXlsxJs(
 
   const rawBuffer = await workbook.xlsx.writeBuffer();
   const warnings: string[] = [];
+  if (removedCfRules > 0) {
+    warnings.push(
+      `Template had ${removedCfRules} invalid conditional-formatting rule(s). They were removed to keep Excel export compatible.`
+    );
+  }
   if (rowsTruncated > 0) {
     warnings.push(
       `More than 40 lines for this report. Export truncated by ${rowsTruncated} line(s) to fit Excel rows 10-49.`
