@@ -1,4 +1,4 @@
-import { Workbook } from "exceljs";
+import { Workbook, ValueType } from "exceljs";
 
 const WEEKDAY_COLS = ["H", "I", "J", "K", "L", "M", "N"] as const;
 const DATA_ROW_START = 10;
@@ -122,6 +122,20 @@ export async function exportXlsxJs(
 ): Promise<{ buffer: Buffer; rowsWritten: number; rowsTruncated: number; warnings: string[] }> {
   const workbook = new Workbook();
   await workbook.xlsx.load(templateBuffer);
+
+  // ExcelJS cannot serialize certain formula types (shared/array formulas, named ranges)
+  // and crashes with "Cannot read properties of undefined (reading '0')".
+  // Strip all formulas, keeping their cached result values so template totals remain.
+  workbook.eachSheet((sheet) => {
+    sheet.eachRow({ includeEmpty: false }, (row) => {
+      row.eachCell({ includeEmpty: false }, (cell) => {
+        if (cell.type === ValueType.Formula) {
+          const fv = cell.value as { result?: unknown };
+          cell.value = (fv?.result ?? null) as never;
+        }
+      });
+    });
+  });
 
   const ws = workbook.getWorksheet("Wochenbericht");
   if (!ws) throw new Error("Sheet 'Wochenbericht' not found in template");
