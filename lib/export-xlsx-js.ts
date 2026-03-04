@@ -1,4 +1,4 @@
-import { Workbook, ValueType } from "exceljs";
+import { Workbook } from "exceljs";
 
 const WEEKDAY_COLS = ["H", "I", "J", "K", "L", "M", "N"] as const;
 const DATA_ROW_START = 10;
@@ -170,20 +170,8 @@ export async function exportXlsxJs(
 ): Promise<{ buffer: Buffer; rowsWritten: number; rowsTruncated: number; warnings: string[] }> {
   const workbook = new Workbook();
   await workbook.xlsx.load(templateBuffer);
-  const removedCfRules = sanitizeConditionalFormatting(workbook);
-
-  // ExcelJS can choke on template-level formula/CF constructs while serializing.
-  // Strip cell formulas, keeping cached result values so template totals remain.
-  workbook.eachSheet((sheet) => {
-    sheet.eachRow({ includeEmpty: false }, (row) => {
-      row.eachCell({ includeEmpty: false }, (cell) => {
-        if (cell.type === ValueType.Formula) {
-          const fv = cell.value as { result?: unknown };
-          cell.value = (fv?.result ?? null) as never;
-        }
-      });
-    });
-  });
+  // Removes CF rules with missing formulae[0] that crash ExcelJS renderExpression().
+  sanitizeConditionalFormatting(workbook);
 
   const ws = workbook.getWorksheet("Wochenbericht");
   if (!ws) throw new Error("Sheet 'Wochenbericht' not found in template");
@@ -307,14 +295,9 @@ export async function exportXlsxJs(
 
   const rawBuffer = await workbook.xlsx.writeBuffer();
   const warnings: string[] = [];
-  if (removedCfRules > 0) {
-    warnings.push(
-      `Template had ${removedCfRules} invalid conditional-formatting rule(s). They were removed to keep Excel export compatible.`
-    );
-  }
   if (rowsTruncated > 0) {
     warnings.push(
-      `More than 40 lines for this report. Export truncated by ${rowsTruncated} line(s) to fit Excel rows 10-49.`
+      `Export gekürzt: ${rowsTruncated} Zeile(n) überschreiten das Limit von 40 Zeilen (Zeilen 10–49).`
     );
   }
 
