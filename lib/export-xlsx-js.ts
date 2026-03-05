@@ -4,6 +4,16 @@ const WEEKDAY_COLS = ["H", "I", "J", "K", "L", "M", "N"] as const;
 const DATA_ROW_START = 10;
 const DATA_ROW_END = 49;
 
+function sanitizeExcelText(value: string): string {
+  // Remove XML-invalid control chars that can trigger Excel "repair" dialogs.
+  return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, "");
+}
+
+function textOrNull(value: string): string | null {
+  const cleaned = sanitizeExcelText(value);
+  return cleaned ? cleaned : null;
+}
+
 function hasFirstFormula(formulae: unknown): formulae is string[] {
   return (
     Array.isArray(formulae) &&
@@ -54,11 +64,12 @@ function sanitizeConditionalFormatting(workbook: Workbook): number {
 
 function parseDecimal(value: string): number | string | null {
   if (!value || typeof value !== "string") return null;
-  const txt = value.trim().replace(",", ".");
+  const cleaned = sanitizeExcelText(value);
+  const txt = cleaned.trim().replace(",", ".");
   if (!txt) return null;
   const num = parseFloat(txt);
   if (Number.isFinite(num)) return num;
-  return value.trim();
+  return cleaned.trim();
 }
 
 /** Convert an "HH:MM" string to an Excel day-fraction (0–1). */
@@ -171,31 +182,31 @@ export async function exportXlsxJs(
   const workbook = new Workbook();
   await workbook.xlsx.load(templateBuffer);
   // Removes CF rules with missing formulae[0] that crash ExcelJS renderExpression().
-  sanitizeConditionalFormatting(workbook);
+  const removedCfRules = sanitizeConditionalFormatting(workbook);
 
   const ws = workbook.getWorksheet("Wochenbericht");
   if (!ws) throw new Error("Sheet 'Wochenbericht' not found in template");
 
   // --- Header ---
   ws.getCell("H1").value = payload.kw;
-  ws.getCell("L1").value = payload.reportStartDe;
-  ws.getCell("R1").value = payload.reportEndDe;
+  ws.getCell("L1").value = textOrNull(payload.reportStartDe);
+  ws.getCell("R1").value = textOrNull(payload.reportEndDe);
 
-  ws.getCell("D3").value = payload.profile.name;
-  ws.getCell("P3").value = payload.profile.vorname;
-  ws.getCell("D5").value = payload.profile.arbeitsstaetteProjekte;
-  ws.getCell("D6").value = payload.profile.artDerArbeit;
+  ws.getCell("D3").value = textOrNull(payload.profile.name);
+  ws.getCell("P3").value = textOrNull(payload.profile.vorname);
+  ws.getCell("D5").value = textOrNull(payload.profile.arbeitsstaetteProjekte);
+  ws.getCell("D6").value = textOrNull(payload.profile.artDerArbeit);
 
   // --- Footer: car data (rows 50–51) ---
-  ws.getCell("U50").value = payload.carData.kennzeichen || null;
-  ws.getCell("V50").value = payload.carData.kennzeichen2 || null;
+  ws.getCell("U50").value = textOrNull(payload.carData.kennzeichen);
+  ws.getCell("V50").value = textOrNull(payload.carData.kennzeichen2);
   const kmStand = parseDecimal(payload.carData.kmStand);
   const kmStandCell = ws.getCell("U51");
-  kmStandCell.value = kmStand !== null ? kmStand : (payload.carData.kmStand || null);
+  kmStandCell.value = kmStand !== null ? kmStand : textOrNull(payload.carData.kmStand);
   if (kmStand !== null) kmStandCell.numFmt = "#,##0.##";
   const kmGefahren = parseDecimal(payload.carData.kmGefahren);
   const kmGefahrenCell = ws.getCell("V51");
-  kmGefahrenCell.value = kmGefahren !== null ? kmGefahren : (payload.carData.kmGefahren || null);
+  kmGefahrenCell.value = kmGefahren !== null ? kmGefahren : textOrNull(payload.carData.kmGefahren);
   if (kmGefahren !== null) kmGefahrenCell.numFmt = "#,##0.##";
 
   // --- Row 9: day-of-month headers ---
@@ -234,7 +245,7 @@ export async function exportXlsxJs(
     const wdIdx = isoWeekdayIndex(rowData.date);
     const weekdayCol = wdIdx !== null ? WEEKDAY_COLS[wdIdx] : null;
 
-    ws.getCell(`A${rowNo}`).value = rowData.siteNameOrt || null;
+    ws.getCell(`A${rowNo}`).value = textOrNull(rowData.siteNameOrt);
 
     const startFrac = timeToExcelFraction(rowData.beginn);
     const endFrac = timeToExcelFraction(rowData.ende);
@@ -261,13 +272,13 @@ export async function exportXlsxJs(
         hourCell.value = dayCellValue;
         hourCell.numFmt = "0.##";
       } else if (typeof dayCellValue === "string" && dayCellValue.trim()) {
-        const marker = dayCellValue.trim();
+        const marker = sanitizeExcelText(dayCellValue).trim();
         ws.getCell(`${weekdayCol}${rowNo}`).value = marker.toLowerCase() === "x" ? "x" : marker;
       }
     }
 
-    ws.getCell(`Q${rowNo}`).value = rowData.lohnType || null;
-    ws.getCell(`R${rowNo}`).value = rowData.ausloese || null;
+    ws.getCell(`Q${rowNo}`).value = textOrNull(rowData.lohnType);
+    ws.getCell(`R${rowNo}`).value = textOrNull(rowData.ausloese);
 
     const zulage = parseDecimal(rowData.zulage);
     if (zulage !== null) {
@@ -277,8 +288,8 @@ export async function exportXlsxJs(
     } else {
       ws.getCell(`S${rowNo}`).value = null;
     }
-    ws.getCell(`T${rowNo}`).value = rowData.projektnummer || null;
-    ws.getCell(`U${rowNo}`).value = rowData.kabelschachtInfo || null;
+    ws.getCell(`T${rowNo}`).value = textOrNull(rowData.projektnummer);
+    ws.getCell(`U${rowNo}`).value = textOrNull(rowData.kabelschachtInfo);
 
     const smNr = parseDecimal(rowData.smNr);
     if (smNr !== null) {
@@ -286,15 +297,20 @@ export async function exportXlsxJs(
       smNrCell.value = smNr;
       smNrCell.numFmt = "0.##";
     } else {
-      ws.getCell(`V${rowNo}`).value = rowData.smNr || null;
+      ws.getCell(`V${rowNo}`).value = textOrNull(rowData.smNr);
     }
 
-    ws.getCell(`W${rowNo}`).value = rowData.bauleiter || null;
-    ws.getCell(`X${rowNo}`).value = rowData.arbeitskollege || null;
+    ws.getCell(`W${rowNo}`).value = textOrNull(rowData.bauleiter);
+    ws.getCell(`X${rowNo}`).value = textOrNull(rowData.arbeitskollege);
   }
 
   const rawBuffer = await workbook.xlsx.writeBuffer();
   const warnings: string[] = [];
+  if (removedCfRules > 0) {
+    warnings.push(
+      `Template-Korrektur: ${removedCfRules} ungültige bedingte Formatierungsregel(n) entfernt.`
+    );
+  }
   if (rowsTruncated > 0) {
     warnings.push(
       `Export gekürzt: ${rowsTruncated} Zeile(n) überschreiten das Limit von 40 Zeilen (Zeilen 10–49).`
