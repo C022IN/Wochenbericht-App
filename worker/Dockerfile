@@ -16,4 +16,4 @@ COPY . /app
 ENV PORT=8080
 EXPOSE 8080
 
-CMD ["python", "worker/app.py"]
+CMD ["gunicorn", "-c", "worker/gunicorn.conf.py", "worker.app:app"]

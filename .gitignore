@@ -14,7 +14,7 @@ node_modules/
 .env.local
 .env.*.local
 data/
-exports/
+/exports/
 template/
 *.db
 *.sqlite3

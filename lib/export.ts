@@ -11,8 +11,8 @@ import {
 } from "./calendar";
 import { getCurrentUserId } from "./auth";
 import { getEntriesByDates, getProfile, getWeekCarData } from "./db";
-import { hasExternalExportWorker, isLocalExportBackendAvailable } from "./runtime";
-import { isSupabaseStorageEnabled, getExportDownloadUrl, uploadExportObject } from "./supabase-storage";
+import { getExportWorkerUrl, hasExternalExportWorker, hasBuiltInVercelExportWorker, isLocalExportBackendAvailable } from "./runtime";
+import { isSupabaseStorageEnabled, uploadExportObject } from "./supabase-storage";
 import { loadTemplateBytes } from "./template";
 import { exportXlsxJs } from "./export-xlsx-js";
 import type { DailyEntry } from "./types";
@@ -123,6 +123,17 @@ function ensureDownloadBaseName(value: string): string {
 
 function ensureObjectPathSafe(value: string): string {
   return value.replace(/[^a-zA-Z0-9/_-]+/g, "_");
+}
+
+function buildStorageProxyUrl(objectPath: string, downloadName: string) {
+  const encodedPath = objectPath
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  const search = new URLSearchParams({
+    dl: ensureDownloadBaseName(downloadName) || path.posix.basename(objectPath)
+  });
+  return `/api/exports/storage/${encodedPath}?${search.toString()}`;
 }
 
 async function ensureDirs() {
@@ -444,13 +455,13 @@ async function uploadWorkerFileToStorage(opts: {
         : "application/pdf",
     data: opts.bytes
   });
-  return getExportDownloadUrl(objectPath);
+  return buildStorageProxyUrl(objectPath, `${opts.baseName}.${opts.ext}`);
 }
 
 async function callExportWorker(prepared: PreparedSegment[], format: ExportFormat): Promise<WorkerSegmentResult[]> {
-  const endpoint = process.env.EXPORT_WORKER_URL?.trim();
+  const endpoint = getExportWorkerUrl();
   if (!endpoint) {
-    throw new Error("EXPORT_WORKER_URL is not configured.");
+    throw new Error("Export worker is not configured.");
   }
 
   const template = await loadTemplateBytes();
@@ -628,7 +639,7 @@ export async function exportWeekReports(opts: {
   const { allWeekDates, isMonthSplit, prepared } = await buildPreparedSegments(year, kw);
 
   let reports: FinalReport[];
-  if (hasExternalExportWorker()) {
+  if (hasExternalExportWorker() || hasBuiltInVercelExportWorker()) {
     reports = await exportViaWorker(prepared, format);
   } else if (isLocalExportBackendAvailable()) {
     reports = await exportLocal(prepared, format);

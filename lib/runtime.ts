@@ -11,6 +11,40 @@ export function hasExternalExportWorker() {
   return Boolean(process.env.EXPORT_WORKER_URL?.trim());
 }
 
+function normalizeBaseUrl(value: string) {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+function getBuiltInVercelExportWorkerBaseUrl() {
+  if (!isVercelRuntime() || process.env.DISABLE_VERCEL_PYTHON_EXPORT_WORKER === "1") {
+    return null;
+  }
+
+  const raw =
+    process.env.VERCEL_URL?.trim() ||
+    process.env.VERCEL_BRANCH_URL?.trim() ||
+    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
+    "";
+
+  const baseUrl = normalizeBaseUrl(raw);
+  return baseUrl || null;
+}
+
+export function hasBuiltInVercelExportWorker() {
+  return Boolean(getBuiltInVercelExportWorkerBaseUrl());
+}
+
+export function getExportWorkerUrl() {
+  const external = process.env.EXPORT_WORKER_URL?.trim();
+  if (external) return external;
+
+  const baseUrl = getBuiltInVercelExportWorkerBaseUrl();
+  if (!baseUrl) return null;
+  return `${baseUrl}/api/export_worker`;
+}
+
 export function isLocalExportBackendAvailable() {
   // Local backend requires Python and filesystem access. Treat Vercel as unavailable.
   if (isVercelRuntime()) return false;
@@ -23,5 +57,5 @@ export function isJsExportAvailable() {
 }
 
 export function isExportGenerationAvailable() {
-  return hasExternalExportWorker() || isLocalExportBackendAvailable() || isJsExportAvailable();
+  return Boolean(getExportWorkerUrl()) || isLocalExportBackendAvailable() || isJsExportAvailable();
 }

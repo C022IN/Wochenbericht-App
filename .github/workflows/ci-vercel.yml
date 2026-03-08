@@ -48,7 +48,7 @@ jobs:
           python-version: "3.11"
 
       - name: Validate Python files
-        run: python -m py_compile scripts/export_wochenbericht.py worker/app.py
+        run: python -m py_compile api/export_worker.py scripts/export_wochenbericht.py worker/app.py worker/export_service.py worker/gunicorn.conf.py
 
   deploy_vercel:
     name: Deploy to Vercel (Production)

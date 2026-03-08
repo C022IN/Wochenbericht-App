@@ -217,12 +217,7 @@ def write_rows(ws, payload):
     return len(rows_to_write), truncated
 
 
-def main():
-    args = parse_args()
-    payload_path = Path(args.payload_file)
-    output_path = Path(args.output)
-
-    data = json.loads(payload_path.read_text(encoding="utf-8"))
+def export_payload_wrapper(data: dict, output_path: Path):
     template_path = data["templatePath"]
     payload = data["payload"]
 
@@ -250,6 +245,20 @@ def main():
             f"More than 40 lines for this report. Export truncated by {rows_truncated} line(s) to fit Excel rows 10-49."
         )
 
+    return result
+
+
+def export_payload_file(payload_path: Path, output_path: Path):
+    data = json.loads(payload_path.read_text(encoding="utf-8"))
+    return export_payload_wrapper(data, output_path)
+
+
+def main():
+    args = parse_args()
+    payload_path = Path(args.payload_file)
+    output_path = Path(args.output)
+
+    result = export_payload_file(payload_path, output_path)
     print(json.dumps(result))
 
 

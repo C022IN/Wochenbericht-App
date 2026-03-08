@@ -1,0 +1,75 @@
+name: CI + Railway Worker Auto-Update
+
+on:
+  pull_request:
+    paths:
+      - "worker/**"
+      - "scripts/export_wochenbericht.py"
+      - ".dockerignore"
+      - ".github/workflows/ci-railway-worker.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "worker/**"
+      - "scripts/export_wochenbericht.py"
+      - ".dockerignore"
+      - ".github/workflows/ci-railway-worker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-railway-worker-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "1"
+  DOCKER_BUILDKIT: "1"
+
+jobs:
+  worker_ci:
+    name: Worker CI (Python + Docker + Healthcheck)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate Python files
+        run: python -m py_compile api/export_worker.py scripts/export_wochenbericht.py worker/app.py worker/export_service.py worker/gunicorn.conf.py
+
+      - name: Build worker image
+        run: docker build -f worker/Dockerfile -t wochenbericht-export-worker-ci .
+
+      - name: Start worker container
+        run: |
+          docker run -d \
+            --name wb-worker-ci \
+            -p 8080:8080 \
+            -e EXPORT_WORKER_TOKEN=ci-smoke-test-token \
+            -e ENABLE_PDF_EXPORT=0 \
+            wochenbericht-export-worker-ci
+
+      - name: Wait for health endpoint
+        run: |
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8080/health > /tmp/worker-health.json; then
+              cat /tmp/worker-health.json
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Worker healthcheck never became ready"
+          docker logs wb-worker-ci
+          exit 1
+
+      - name: Stop worker container
+        if: always()
+        run: docker rm -f wb-worker-ci || true

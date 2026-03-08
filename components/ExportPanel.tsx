@@ -25,9 +25,27 @@ type ExportResponse = {
 };
 
 function downloadBase64(base64: string, filename: string) {
-  const byteChars = atob(base64);
-  const bytes = new Uint8Array(byteChars.length);
-  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+  const cleaned = base64.replace(/\s+/g, "");
+  const chunkSize = 16_384;
+  const chunks: Uint8Array[] = [];
+  let totalLength = 0;
+
+  for (let offset = 0; offset < cleaned.length; offset += chunkSize) {
+    const slice = cleaned.slice(offset, offset + chunkSize);
+    const byteChars = atob(slice);
+    const bytes = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+    chunks.push(bytes);
+    totalLength += bytes.length;
+  }
+
+  const bytes = new Uint8Array(totalLength);
+  let writeOffset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, writeOffset);
+    writeOffset += chunk.length;
+  }
+
   const blob = new Blob([bytes], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   });
@@ -35,8 +53,12 @@ function downloadBase64(base64: string, filename: string) {
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  a.rel = "noopener";
+  a.style.display = "none";
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export function ExportPanel({ year, kw }: { year: number; kw: number }) {
@@ -131,7 +153,7 @@ export function ExportPanel({ year, kw }: { year: number; kw: number }) {
 
               <div className="toolbar">
                 {report.xlsxUrl ? (
-                  <a className="btn primary" href={report.xlsxUrl}>
+                  <a className="btn primary" href={report.xlsxUrl} download={report.xlsxFilename}>
                     Excel
                   </a>
                 ) : report.xlsxBase64 ? (

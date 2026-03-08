@@ -10,12 +10,14 @@ Technician weekly report app (`KW`) with day entry, Excel export from your Axian
 - Supabase Storage for generated export files (`.xlsx`, optional `.pdf`)
 - Month-split export rule for weeks that cross months
 - External export worker (Python + `openpyxl`) for online Excel generation
+- Built-in Vercel Python export function for XLSX generation without a separate worker
 - Optional PDF generation in worker (LibreOffice on worker host)
 - Local fallback mode for development (JSON DB + local Python export)
 
 ## Architecture (Vercel-ready)
 
 - `Vercel`: UI + API routes + auth cookies + DB access + export orchestration
+- `Vercel Python Function`: optional built-in XLSX export path at `/api/export_worker`
 - `Supabase`: Auth + Postgres (entries/profile) + Storage (generated files)
 - `Worker` (separate container): runs Python exporter (`openpyxl`) and optional LibreOffice PDF conversion
 
@@ -69,25 +71,25 @@ Required:
 - `SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_EXPORTS_BUCKET`
-- `EXPORT_WORKER_URL`
 - `EXPORT_WORKER_TOKEN`
 - `DISABLE_PDF_EXPORT=1` (initially)
 - `NEXT_PUBLIC_DISABLE_PDF_EXPORT=1` (UI hides PDF buttons)
 
 Optional:
 
+- `EXPORT_WORKER_URL` (set this only if you want to use an external worker instead of the built-in Vercel Python function)
 - `TEMPLATE_XLSX_URL` (remote template URL, e.g. Supabase Storage public/signed URL)
 - `SUPABASE_EXPORTS_PUBLIC_BUCKET=1` (otherwise app generates signed URLs)
 - `SUPABASE_EXPORTS_SIGNED_URL_TTL_SECONDS=86400`
+- `DISABLE_VERCEL_PYTHON_EXPORT_WORKER=1` (forces the JS fallback when no external worker is configured)
 
 ### 3. Deploy the export worker
 
 The worker lives in `worker/`.
 
-Example build context:
-
 - Dockerfile: `worker/Dockerfile`
 - Endpoint expected by app: `POST /export-week`
+- Worker deployment guide: `worker/README.md`
 
 Worker env:
 
@@ -95,11 +97,15 @@ Worker env:
 - `ENABLE_PDF_EXPORT=0` (default)
 - `PYTHON_BIN=python` (optional)
 
+The worker container now runs behind Gunicorn for production instead of the Flask development server.
+
 To enable PDF later:
 
-- install LibreOffice in worker image (see commented line in `worker/Dockerfile`)
+- install LibreOffice in the worker image (see commented line in `worker/Dockerfile`)
 - set `ENABLE_PDF_EXPORT=1`
 - unset `DISABLE_PDF_EXPORT` / `NEXT_PUBLIC_DISABLE_PDF_EXPORT` on Vercel
+
+If you only need XLSX export, Vercel can now run the Python export logic directly via the built-in function at `/api/export_worker`. In that setup, you do not need `EXPORT_WORKER_URL`.
 
 ## GitHub Actions CI/CD (deploys to Vercel)
 
@@ -107,6 +113,12 @@ This repo includes `/.github/workflows/ci-vercel.yml`:
 
 - Pull requests: runs CI (`npm ci`, TypeScript check, Next.js build, Python syntax check)
 - Push to `main`: runs CI, then deploys to Vercel (production) using the Vercel CLI
+
+For the export worker, this repo also includes `/.github/workflows/ci-railway-worker.yml`:
+
+- Pull requests touching worker files: validates Python, builds the worker Docker image, and checks `GET /health`
+- Pushes to `main` touching worker files: runs the same worker CI checks
+- Railway should be configured with `Wait for CI` so it auto-updates only after that workflow passes
 
 Add these GitHub repository secrets before enabling the deploy job:
 
