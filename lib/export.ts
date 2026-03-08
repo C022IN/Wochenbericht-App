@@ -450,8 +450,9 @@ async function uploadWorkerFileToStorage(opts: {
   }
 
   const safeUser = ensureObjectPathSafe(opts.userId);
+  const safeBaseName = ensureObjectPathSafe(opts.baseName) || "export";
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const objectPath = `exports/${safeUser}/${stamp}/${opts.baseName}.${opts.ext}`;
+  const objectPath = `exports/${safeUser}/${stamp}/${safeBaseName}.${opts.ext}`;
   await uploadExportObject({
     objectPath,
     contentType:
