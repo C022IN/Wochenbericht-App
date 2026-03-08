@@ -175,6 +175,25 @@ function isoWeekdayIndex(isoDate: string): number | null {
   }
 }
 
+function applyTimeFormulas(
+  ws: ReturnType<Workbook["getWorksheet"]> extends infer T ? NonNullable<T> : never
+) {
+  for (let row = DATA_ROW_START; row <= DATA_ROW_END; row++) {
+    ws.getCell(`G${row}`).value = {
+      formula:
+        `IF(E${row}="","",IF(E${row}<F${row},` +
+        `IF((F${row}-E${row})*24>9.5,0.75,IF((F${row}-E${row})*24>6,0.5,0)),` +
+        `IF((F${row}-E${row}+1)*24>9.5,0.75,IF((F${row}-E${row}+1)*24>6,0.5,0))))`,
+    };
+    ws.getCell(`O${row}`).value = {
+      formula: `IF(E${row}="","",IF(E${row}<F${row},F${row}-E${row},F${row}-E${row}+1)*24)`,
+    };
+    ws.getCell(`P${row}`).value = {
+      formula: `IF(E${row}="","",IF(O${row}-G${row}>10,"Arbeitszeit prüfen",SUM(O${row}-G${row})))`,
+    };
+  }
+}
+
 export async function exportXlsxJs(
   templateBuffer: Buffer,
   payload: JsExportPayload
@@ -232,6 +251,7 @@ export async function exportXlsxJs(
       ws.getCell(`${col}${row}`).value = null;
     }
   }
+  applyTimeFormulas(ws);
 
   // --- Write data rows ---
   const maxRows = DATA_ROW_END - DATA_ROW_START + 1;

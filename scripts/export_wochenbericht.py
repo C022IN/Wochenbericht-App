@@ -158,7 +158,19 @@ def clear_data_rows(ws):
             ws[f"{col}{row}"] = None
         for col in ["Q", "R", "S", "T", "U", "V", "W", "X"]:
             ws[f"{col}{row}"] = None
-        # Keep template formulas in G/O/P intact unless pause override is explicitly written.
+
+
+def apply_time_formulas(ws):
+    for row in range(DATA_ROW_START, DATA_ROW_END + 1):
+        ws[f"G{row}"] = (
+            f'=IF(E{row}="","",IF(E{row}<F{row},'
+            f'IF((F{row}-E{row})*24>9.5,0.75,IF((F{row}-E{row})*24>6,0.5,0)),'
+            f'IF((F{row}-E{row}+1)*24>9.5,0.75,IF((F{row}-E{row}+1)*24>6,0.5,0))))'
+        )
+        ws[f"O{row}"] = f'=IF(E{row}="","",IF(E{row}<F{row},F{row}-E{row},F{row}-E{row}+1)*24)'
+        ws[f"P{row}"] = (
+            f'=IF(E{row}="","",IF(O{row}-G{row}>10,"Arbeitszeit prüfen",SUM(O{row}-G{row})))'
+        )
 
 
 def write_rows(ws, payload):
@@ -229,6 +241,7 @@ def export_payload_wrapper(data: dict, output_path: Path):
     write_header(ws, payload)
     clear_and_write_date_row(ws, payload)
     clear_data_rows(ws)
+    apply_time_formulas(ws)
     rows_written, rows_truncated = write_rows(ws, payload)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
