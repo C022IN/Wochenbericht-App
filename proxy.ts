@@ -32,7 +32,7 @@ async function tryRefreshSession(
   }
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (
@@ -63,7 +63,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // No access token — try a silent refresh before falling back to login redirect.
+  // No access token: try a silent refresh before falling back to login redirect.
   const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
   if (refreshToken) {
     const newSession = await tryRefreshSession(supabaseUrl, anonKey, refreshToken);
@@ -84,7 +84,7 @@ export async function middleware(request: NextRequest) {
       });
       return response;
     }
-    // Refresh failed — clear the stale refresh token cookie to avoid retry loops.
+    // Refresh failed: clear the stale refresh token cookie to avoid retry loops.
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
