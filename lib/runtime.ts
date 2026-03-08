@@ -36,9 +36,14 @@ export function hasBuiltInVercelExportWorker() {
   return Boolean(getBuiltInVercelExportWorkerBaseUrl());
 }
 
-export function getExportWorkerUrl() {
+export function getExportWorkerUrl(opts?: { requestOrigin?: string }) {
   const external = process.env.EXPORT_WORKER_URL?.trim();
   if (external) return external;
+
+  const requestOrigin = normalizeBaseUrl(opts?.requestOrigin || "");
+  if (requestOrigin) {
+    return `${requestOrigin}/api/export_worker`;
+  }
 
   const baseUrl = getBuiltInVercelExportWorkerBaseUrl();
   if (!baseUrl) return null;

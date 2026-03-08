@@ -37,7 +37,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await exportWeekReports({ year, kw, format });
+    const result = await exportWeekReports({
+      year,
+      kw,
+      format,
+      requestOrigin: new URL(request.url).origin,
+      requestCookie: request.headers.get("cookie") ?? undefined
+    });
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof AuthError) {

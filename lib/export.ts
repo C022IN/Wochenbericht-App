@@ -22,6 +22,11 @@ const TMP_DIR = path.join(EXPORTS_DIR, ".tmp");
 
 type ExportFormat = "xlsx" | "pdf" | "both";
 
+type ExportRequestContext = {
+  requestOrigin?: string;
+  requestCookie?: string;
+};
+
 type ExportRow = {
   date: string;
   siteNameOrt: string;
@@ -459,7 +464,17 @@ async function uploadWorkerFileToStorage(opts: {
 }
 
 async function callExportWorker(prepared: PreparedSegment[], format: ExportFormat): Promise<WorkerSegmentResult[]> {
-  const endpoint = getExportWorkerUrl();
+  return callExportWorkerWithContext(prepared, format, {});
+}
+
+async function callExportWorkerWithContext(
+  prepared: PreparedSegment[],
+  format: ExportFormat,
+  context: ExportRequestContext
+): Promise<WorkerSegmentResult[]> {
+  const endpoint = getExportWorkerUrl({
+    requestOrigin: context.requestOrigin
+  });
   if (!endpoint) {
     throw new Error("Export worker is not configured.");
   }
@@ -486,6 +501,12 @@ async function callExportWorker(prepared: PreparedSegment[], format: ExportForma
   };
   if (process.env.EXPORT_WORKER_TOKEN?.trim()) {
     headers.Authorization = `Bearer ${process.env.EXPORT_WORKER_TOKEN.trim()}`;
+  }
+  if (context.requestCookie?.trim()) {
+    headers.cookie = context.requestCookie;
+  }
+  if (process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()) {
+    headers["x-vercel-protection-bypass"] = process.env.VERCEL_AUTOMATION_BYPASS_SECRET.trim();
   }
 
   const res = await fetch(endpoint, {
@@ -523,8 +544,12 @@ async function callExportWorker(prepared: PreparedSegment[], format: ExportForma
   return results;
 }
 
-async function exportViaWorker(prepared: PreparedSegment[], format: ExportFormat): Promise<FinalReport[]> {
-  const workerResults = await callExportWorker(prepared, format);
+async function exportViaWorker(
+  prepared: PreparedSegment[],
+  format: ExportFormat,
+  context: ExportRequestContext
+): Promise<FinalReport[]> {
+  const workerResults = await callExportWorkerWithContext(prepared, format, context);
   const userId = await getCurrentUserId();
 
   const byBaseName = new Map(prepared.map((segment) => [segment.baseName, segment]));
@@ -634,13 +659,15 @@ export async function exportWeekReports(opts: {
   year: number;
   kw: number;
   format: ExportFormat;
+  requestOrigin?: string;
+  requestCookie?: string;
 }) {
-  const { year, kw, format } = opts;
+  const { year, kw, format, requestOrigin, requestCookie } = opts;
   const { allWeekDates, isMonthSplit, prepared } = await buildPreparedSegments(year, kw);
 
   let reports: FinalReport[];
   if (hasExternalExportWorker() || hasBuiltInVercelExportWorker()) {
-    reports = await exportViaWorker(prepared, format);
+    reports = await exportViaWorker(prepared, format, { requestOrigin, requestCookie });
   } else if (isLocalExportBackendAvailable()) {
     reports = await exportLocal(prepared, format);
   } else {

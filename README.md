@@ -107,6 +107,8 @@ To enable PDF later:
 
 If you only need XLSX export, Vercel can now run the Python export logic directly via the built-in function at `/api/export_worker`. In that setup, you do not need `EXPORT_WORKER_URL`.
 
+If Deployment Protection or Vercel Authentication is enabled, the app forwards the incoming request cookies to the built-in worker and can also use `VERCEL_AUTOMATION_BYPASS_SECRET` when Vercel provides it.
+
 ## GitHub Actions CI/CD (deploys to Vercel)
 
 This repo includes `/.github/workflows/ci-vercel.yml`:
