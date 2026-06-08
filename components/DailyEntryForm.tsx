@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { EMPTY_DAILY_LINE, type DailyEntry, type DailyLineType } from "@/lib/types";
 
 type DayContext = {
@@ -60,6 +60,94 @@ function pausePlaceholderForLine(line: DailyEntry["lines"][number]) {
   if (inferredPause == null) return "leer = auto";
   if (inferredPause <= 0) return "auto: 0";
   return `auto: ${String(inferredPause).replace(".", ",")}`;
+}
+
+const KNOWN_PROJEKTNUMMERN: { code: string; label: string }[] = [
+  { code: "P.0923220.1.01", label: "PTI 21/25 NEU" },
+  { code: "P.0659633.1.01", label: "PTI 21/25 alt" },
+  { code: "P.0923209.1.01", label: "PTI 13/14 NEU" },
+  { code: "P.0653304.1.01", label: "PTI 13/14 alt" },
+  { code: "G.014182.806.00", label: "Intern / Besprechung" },
+  { code: "G.014182.796.00", label: "Schulung" },
+  { code: "G.014182.801.00", label: "Jahresauftakt" },
+  { code: "G.014182.811.01", label: "Werkzeugwartung" },
+  { code: "G.014182.827.00", label: "Feiertag" },
+  { code: "G.014182.838.00", label: "Krank" },
+  { code: "G.014182.840.00", label: "Urlaub" },
+];
+
+const SITE_PROJ_RULES: { keywords: string[]; code: string }[] = [
+  { keywords: ["urlaub"], code: "G.014182.840.00" },
+  { keywords: ["krank"], code: "G.014182.838.00" },
+  { keywords: ["feiertag", "fronleichnam", "weihnacht", "neujahr", "ostern", "pfingst", "maifeiertag", "tag der deutschen"], code: "G.014182.827.00" },
+  { keywords: ["besprechung", "meeting", "toolbox", "jahresauftakt"], code: "G.014182.806.00" },
+  { keywords: ["schulung", "ztv"], code: "G.014182.796.00" },
+  { keywords: ["werkzeug"], code: "G.014182.811.01" },
+];
+
+const LOHN_PROJ_MAP: Record<string, string> = {
+  U: "G.014182.840.00",
+  F: "G.014182.827.00",
+  K: "G.014182.838.00",
+};
+
+function suggestProjektnummer(siteNameOrt: string, lohnType: string): string {
+  if (LOHN_PROJ_MAP[lohnType]) return LOHN_PROJ_MAP[lohnType];
+  const lower = siteNameOrt.trim().toLowerCase();
+  if (!lower) return "";
+  for (const rule of SITE_PROJ_RULES) {
+    if (rule.keywords.some((kw) => lower.includes(kw))) return rule.code;
+  }
+  return "P.0923220.1.01";
+}
+
+const CUSTOM_SENTINEL = "__custom__";
+
+function ProjektnummerField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const isKnown = KNOWN_PROJEKTNUMMERN.some((p) => p.code === value);
+  const [customMode, setCustomMode] = useState(() => value !== "" && !KNOWN_PROJEKTNUMMERN.some((p) => p.code === value));
+
+  const selectValue = customMode ? CUSTOM_SENTINEL : value;
+
+  function handleSelectChange(e: ChangeEvent<HTMLSelectElement>) {
+    const v = e.target.value;
+    if (v === CUSTOM_SENTINEL) {
+      setCustomMode(true);
+      onChange("");
+    } else {
+      setCustomMode(false);
+      onChange(v);
+    }
+  }
+
+  // If parent resets value to a known code (e.g. line init), exit custom mode
+  if (!customMode && !isKnown && value !== "") {
+    setCustomMode(true);
+  }
+  if (customMode && isKnown) {
+    setCustomMode(false);
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+      <select value={selectValue} onChange={handleSelectChange}>
+        <option value="">– keine –</option>
+        {KNOWN_PROJEKTNUMMERN.map((p) => (
+          <option key={p.code} value={p.code}>
+            {p.label} — {p.code}
+          </option>
+        ))}
+        <option value={CUSTOM_SENTINEL}>Sonstige (eigene Nummer)…</option>
+      </select>
+      {customMode && (
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="z.B. P.0000000.0.00"
+        />
+      )}
+    </div>
+  );
 }
 
 function makeLineId() {
@@ -165,10 +253,31 @@ export function DailyEntryForm({
       normalizedPatch.dayHoursOverride = "x";
     }
 
-    setEntry((prev) => ({
-      ...prev,
-      lines: prev.lines.map((line, i) => (i === index ? { ...line, ...normalizedPatch } : line))
-    }));
+    setEntry((prev) => {
+      const currentLine = prev.lines[index];
+      // Auto-fill projektnummer when lohnType changes and projektnummer is still empty
+      if (typeof normalizedPatch.lohnType === "string" && !currentLine.projektnummer && !normalizedPatch.projektnummer) {
+        const suggested = suggestProjektnummer(currentLine.siteNameOrt, normalizedPatch.lohnType);
+        if (suggested) normalizedPatch.projektnummer = suggested;
+      }
+      return {
+        ...prev,
+        lines: prev.lines.map((line, i) => (i === index ? { ...line, ...normalizedPatch } : line))
+      };
+    });
+  }
+
+  function autoFillProjOnSiteBlur(index: number, siteNameOrt: string) {
+    setEntry((prev) => {
+      const line = prev.lines[index];
+      if (line.projektnummer) return prev;
+      const suggested = suggestProjektnummer(siteNameOrt, line.lohnType);
+      if (!suggested) return prev;
+      return {
+        ...prev,
+        lines: prev.lines.map((l, i) => (i === index ? { ...l, projektnummer: suggested } : l))
+      };
+    });
   }
 
   function addLine() {
@@ -260,6 +369,7 @@ export function DailyEntryForm({
                   <input
                     value={line.siteNameOrt}
                     onChange={(e) => updateLine(index, { siteNameOrt: e.target.value })}
+                    onBlur={(e) => autoFillProjOnSiteBlur(index, e.target.value)}
                     placeholder="Baustelle / Ort"
                   />
                 </label>
@@ -339,7 +449,10 @@ export function DailyEntryForm({
                 </label>
                 <label className="span-2">
                   <span className="label-title">Projektnummer</span>
-                  <input value={line.projektnummer} onChange={(e) => updateLine(index, { projektnummer: e.target.value })} />
+                  <ProjektnummerField
+                    value={line.projektnummer}
+                    onChange={(v) => updateLine(index, { projektnummer: v })}
+                  />
                 </label>
                 <label className="span-2">
                   <span className="label-title">Kabelschacht</span>

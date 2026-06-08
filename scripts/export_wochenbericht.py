@@ -137,6 +137,13 @@ def clear_and_write_date_row(ws, payload):
     segment_dates = set(payload["segmentDates"])
     all_week_dates = payload["allWeekDates"]
 
+    # Detect Feiertag dates from rows (projektnummer G.014182.827.00)
+    feiertag_dates = {
+        row["date"]
+        for row in payload.get("rows", [])
+        if row.get("projektnummer") == "G.014182.827.00" and row.get("date")
+    }
+
     for col in WEEKDAY_COLUMNS:
         ws[f"{col}9"] = None
 
@@ -146,7 +153,7 @@ def clear_and_write_date_row(ws, payload):
         d = parse_iso_date(iso)
         iso_weekday = d.isoweekday()  # 1..7
         col = WEEKDAY_COLUMNS[iso_weekday - 1]
-        ws[f"{col}9"] = d.day
+        ws[f"{col}9"] = f"{d.day}*" if iso in feiertag_dates else d.day
 
 
 def clear_data_rows(ws):
@@ -201,10 +208,6 @@ def write_rows(ws, payload):
         pause_override = parse_decimal(row_data.get("pauseOverride", ""))
         if isinstance(pause_override, (int, float)):
             ws[f"G{row_no}"] = float(pause_override)
-        elif not start_t and not end_t and isinstance(day_cell_value, (int, float)):
-            pause_auto_from_hours = infer_pause_from_net_hours(float(day_cell_value))
-            if isinstance(pause_auto_from_hours, (int, float)) and pause_auto_from_hours > 0:
-                ws[f"G{row_no}"] = float(pause_auto_from_hours)
 
         if weekday_col and isinstance(day_cell_value, (int, float)) and day_cell_value >= 0:
             ws[f"{weekday_col}{row_no}"] = float(day_cell_value)

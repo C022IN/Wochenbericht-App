@@ -10,7 +10,7 @@ import {
   splitWeekByMonth
 } from "./calendar";
 import { getCurrentUserId } from "./auth";
-import { getEntriesByDates, getProfile, getWeekCarData } from "./db";
+import { getEntriesByDates, getProfile, getWeekCarData, getProfileForUser, getEntriesByDatesForUser, getWeekCarDataForUser } from "./db";
 import { getExportWorkerUrl, hasExternalExportWorker, hasBuiltInVercelExportWorker, isLocalExportBackendAvailable } from "./runtime";
 import { isSupabaseStorageEnabled, uploadExportObject } from "./supabase-storage";
 import { loadTemplateBytes } from "./template";
@@ -682,4 +682,70 @@ export async function exportWeekReports(opts: {
     isMonthSplit,
     reports
   };
+}
+
+export async function exportWeekReportBuffer(opts: {
+  year: number;
+  kw: number;
+  userId: string;
+}): Promise<Array<{ buffer: Buffer; filename: string; warnings: string[] }>> {
+  const { year, kw, userId } = opts;
+  const weekDates = getIsoWeekDates(year, kw);
+  const allWeekDates = weekDates.map(toIsoDate);
+  const segments = splitWeekByMonth(weekDates);
+
+  const [entries, profile, weekCarData] = await Promise.all([
+    getEntriesByDatesForUser(allWeekDates, userId),
+    getProfileForUser(userId),
+    getWeekCarDataForUser(year, kw, userId)
+  ]);
+
+  const template = await loadTemplateBytes();
+  const results: Array<{ buffer: Buffer; filename: string; warnings: string[] }> = [];
+
+  for (const segment of segments) {
+    const headers = collectSegmentHeaderValues(
+      entries,
+      segment.dates,
+      profile.defaultArbeitsstaetteProjekte,
+      profile.defaultArtDerArbeit
+    );
+    const rows = flattenRowsForSegment(entries, segment.dates);
+    const segmentWeekDisplay = getSegmentWeekDisplayInfo(year, kw, segment.year);
+    const baseName = buildReportBaseName({
+      month: segment.month,
+      year: segment.year,
+      kw: segmentWeekDisplay.displayKw
+    });
+
+    const jsResult = await exportXlsxJs(template.bytes, {
+      kw: segmentWeekDisplay.displayKw,
+      reportEnd: segment.endDate,
+      reportStartDe: formatDeDate(segment.startDate),
+      reportEndDe: formatDeDate(segment.endDate),
+      allWeekDates,
+      segmentDates: segment.dates,
+      profile: {
+        name: profile.name,
+        vorname: profile.vorname,
+        arbeitsstaetteProjekte: headers.arbeitsstaetteProjekte,
+        artDerArbeit: headers.artDerArbeit
+      },
+      rows,
+      carData: {
+        kennzeichen: profile.kennzeichen,
+        kennzeichen2: weekCarData.kennzeichen2,
+        kmStand: weekCarData.kmStand,
+        kmGefahren: weekCarData.kmGefahren
+      }
+    });
+
+    results.push({
+      buffer: jsResult.buffer,
+      filename: `${baseName}.xlsx`,
+      warnings: jsResult.warnings
+    });
+  }
+
+  return results;
 }

@@ -89,7 +89,7 @@ function sanitizeEntry(date: string, entry: unknown): DailyEntry {
     date,
     arbeitsstaetteProjekte:
       typeof source.arbeitsstaetteProjekte === "string" ? source.arbeitsstaetteProjekte : "",
-    artDerArbeit: typeof source.artDerArbeit === "string" ? source.artDerArbeit : "",
+    artDerArbeit: typeof source.artDerArbeit === "string" && source.artDerArbeit ? source.artDerArbeit : "S05",
     lines,
     updatedAt: nowIso()
   };
@@ -120,7 +120,7 @@ function sanitizeProfile(profile: unknown): UserProfile {
     vorname: typeof source.vorname === "string" ? source.vorname : "",
     defaultArbeitsstaetteProjekte:
       typeof source.defaultArbeitsstaetteProjekte === "string" ? source.defaultArbeitsstaetteProjekte : "",
-    defaultArtDerArbeit: typeof source.defaultArtDerArbeit === "string" ? source.defaultArtDerArbeit : "",
+    defaultArtDerArbeit: typeof source.defaultArtDerArbeit === "string" && source.defaultArtDerArbeit ? source.defaultArtDerArbeit : "S05",
     kennzeichen: typeof source.kennzeichen === "string" ? source.kennzeichen : "",
     weekData: sanitizeWeekData(source.weekData)
   };
@@ -518,4 +518,30 @@ export async function saveWeekCarData(year: number, kw: number, data: Partial<We
     weekData: { ...profile.weekData, [key]: updated }
   });
   return updated;
+}
+
+// --- User-scoped reads for server-to-server (cron) access ---
+
+export async function getProfileForUser(userId: string): Promise<UserProfile> {
+  if (!isSupabaseDbEnabled()) {
+    const db = await readLocalDb();
+    return db.profile;
+  }
+  const row = await getSupabaseProfileRow(userId);
+  if (row) return profileFromSupabaseRow(row, row.email ?? null);
+  return sanitizeProfile(EMPTY_PROFILE);
+}
+
+export async function getEntriesByDatesForUser(dates: string[], userId: string) {
+  if (!isSupabaseDbEnabled()) {
+    const db = await readLocalDb();
+    return Object.fromEntries(dates.map((d) => [d, db.entries[d] ?? null]));
+  }
+  return getSupabaseEntriesMapByDates(userId, dates);
+}
+
+export async function getWeekCarDataForUser(year: number, kw: number, userId: string): Promise<WeekCarData> {
+  const profile = await getProfileForUser(userId);
+  const key = makeWeekKey(year, kw);
+  return sanitizeWeekCarData(profile.weekData?.[key]);
 }

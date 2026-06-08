@@ -78,7 +78,7 @@ export const EMPTY_PROFILE: UserProfile = {
   name: "",
   vorname: "",
   defaultArbeitsstaetteProjekte: "",
-  defaultArtDerArbeit: "",
+  defaultArtDerArbeit: "S05",
   kennzeichen: "",
   weekData: {}
 };
