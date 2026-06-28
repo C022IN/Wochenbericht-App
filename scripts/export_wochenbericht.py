@@ -18,6 +18,10 @@ WEEKDAY_COLUMNS = ["H", "I", "J", "K", "L", "M", "N"]
 DATA_ROW_START = 10
 DATA_ROW_END = 49
 
+# Per-day travel-time ("Fahrzeiten") rows: fixed label. Travel hours are written as
+# entered (the form shows "max 3" only as a soft hint, not a hard cap).
+FAHRZEIT_LABEL = "Fahrzeiten"
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -88,6 +92,15 @@ def infer_pause_from_net_hours(net_hours: float | None):
         if auto_pause_hours(gross) == pause:
             return pause
     return None
+
+
+def fahrzeit_hours(value):
+    parsed = parse_decimal(value)
+    if not isinstance(parsed, (int, float)):
+        return None
+    if not parsed > 0:
+        return None
+    return float(parsed)
 
 
 def compute_day_cell_value(row: dict):
@@ -189,7 +202,18 @@ def write_rows(ws, payload):
     for idx, row_data in enumerate(rows_to_write):
         row_no = DATA_ROW_START + idx
         iso = row_data.get("date")
-        day_cell_value = compute_day_cell_value(row_data)
+        site_raw = row_data.get("siteNameOrt", "") or ""
+        site_has = bool(site_raw.strip())
+        travel_hrs = (
+            fahrzeit_hours(row_data.get("fahrzeit", ""))
+            if row_data.get("kind") == "fahrzeit"
+            else None
+        )
+        # A dedicated travel row = an arbeitszeit line with no site name but a travel value.
+        # Its day column = travel hours; the day total still comes from the E/F bracket.
+        # Named rows keep their site name + normal day-hours; "Fahrzeiten" as a row name still works.
+        is_travel_row = travel_hrs is not None and not site_has
+        day_cell_value = travel_hrs if is_travel_row else compute_day_cell_value(row_data)
         weekday_col = None
         if isinstance(iso, str):
             try:
@@ -197,7 +221,12 @@ def write_rows(ws, payload):
             except Exception:
                 weekday_col = None
 
-        ws[f"A{row_no}"] = row_data.get("siteNameOrt", "")
+        if site_has:
+            ws[f"A{row_no}"] = site_raw
+        elif row_data.get("kind") == "fahrzeit":
+            ws[f"A{row_no}"] = FAHRZEIT_LABEL
+        else:
+            ws[f"A{row_no}"] = ""
         start_t = parse_time_value(row_data.get("beginn", ""))
         end_t = parse_time_value(row_data.get("ende", ""))
         if start_t:

@@ -23,6 +23,7 @@ export type DailyLine = {
   ende: string;
   pauseOverride: string;
   dayHoursOverride: string;
+  fahrzeit: string; // travel hours for the day (arbeitszeit lines → "Fahrzeiten" row, capped at 3 on export)
   lohnType: string;
   ausloese: string;
   zulage: string;
@@ -91,6 +92,7 @@ export const EMPTY_DAILY_LINE = (): DailyLine => ({
   ende: "",
   pauseOverride: "",
   dayHoursOverride: "",
+  fahrzeit: "",
   lohnType: "S",
   ausloese: "",
   zulage: "",

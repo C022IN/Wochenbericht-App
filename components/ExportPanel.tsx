@@ -1,6 +1,7 @@
 "use client";
 
 import { startTransition, useState } from "react";
+import { useTranslations } from "next-intl";
 import { formatDeDate } from "@/lib/calendar";
 
 type ExportReport = {
@@ -62,6 +63,7 @@ function downloadBase64(base64: string, filename: string) {
 }
 
 export function ExportPanel({ year, kw }: { year: number; kw: number }) {
+  const t = useTranslations("export");
   const [loading, setLoading] = useState<"" | "xlsx" | "pdf" | "both">("");
   const [error, setError] = useState("");
   const [result, setResult] = useState<ExportResponse | null>(null);
@@ -70,11 +72,11 @@ export function ExportPanel({ year, kw }: { year: number; kw: number }) {
 
   async function runExport(format: "xlsx" | "pdf" | "both") {
     if (exportsDisabled) {
-      setError("Export ist in dieser Deployment-Umgebung deaktiviert.");
+      setError(t("disabledEnv"));
       return;
     }
     if (pdfDisabled && (format === "pdf" || format === "both")) {
-      setError("PDF Export ist in dieser Deployment-Umgebung deaktiviert.");
+      setError(t("pdfDisabledEnv"));
       return;
     }
     setLoading(format);
@@ -86,10 +88,10 @@ export function ExportPanel({ year, kw }: { year: number; kw: number }) {
         body: JSON.stringify({ year, kw, format })
       });
       const data = (await res.json()) as ExportResponse;
-      if (!res.ok) throw new Error(data.error || "Export fehlgeschlagen");
+      if (!res.ok) throw new Error(data.error || t("exportFailed"));
       startTransition(() => setResult(data));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Export fehlgeschlagen");
+      setError(e instanceof Error ? e.message : t("exportFailed"));
     } finally {
       setLoading("");
     }
@@ -98,7 +100,7 @@ export function ExportPanel({ year, kw }: { year: number; kw: number }) {
   return (
     <section className="card" aria-labelledby="export-heading">
       <div className="toolbar spread">
-        <h2 id="export-heading">Export</h2>
+        <h2 id="export-heading">{t("title")}</h2>
         <div className="toolbar">
           <button
             type="button"
@@ -106,11 +108,11 @@ export function ExportPanel({ year, kw }: { year: number; kw: number }) {
             onClick={() => runExport("xlsx")}
             disabled={Boolean(loading) || exportsDisabled}
           >
-            {loading === "xlsx" ? "Erstelle..." : "Excel"}
+            {loading === "xlsx" ? t("creating") : t("excel")}
           </button>
           {!pdfDisabled ? (
             <button type="button" className="btn" onClick={() => runExport("pdf")} disabled={Boolean(loading) || exportsDisabled}>
-              {loading === "pdf" ? "Erstelle..." : "PDF"}
+              {loading === "pdf" ? t("creating") : t("pdf")}
             </button>
           ) : null}
           {!pdfDisabled ? (
@@ -120,30 +122,30 @@ export function ExportPanel({ year, kw }: { year: number; kw: number }) {
               onClick={() => runExport("both")}
               disabled={Boolean(loading) || exportsDisabled}
             >
-              {loading === "both" ? "Erstelle..." : "Beide"}
+              {loading === "both" ? t("creating") : t("both")}
             </button>
           ) : null}
         </div>
       </div>
 
       {exportsDisabled ? (
-        <div className="muted-box">Export ist deaktiviert, bis ein externer Export-Worker konfiguriert ist.</div>
+        <div className="muted-box">{t("disabledShort")}</div>
       ) : null}
       {!exportsDisabled && pdfDisabled ? (
-        <div className="muted-box">PDF Export ist deaktiviert. Excel bleibt verfügbar.</div>
+        <div className="muted-box">{t("pdfDisabledShort")}</div>
       ) : null}
 
       {error ? <p className="status-text" style={{ color: "var(--danger)" }}>{error}</p> : null}
 
       {result?.reports?.length ? (
         <div className="export-results">
-          {result.isMonthSplit ? <span className="pill warn">2 Dateien</span> : null}
+          {result.isMonthSplit ? <span className="pill warn">{t("filesCount", { count: 2 })}</span> : null}
 
           {result.reports.map((report) => (
             <div className="export-item" key={`${report.segmentKey}-${report.dates.join(",")}`}>
               <div className="toolbar spread">
                 <strong>
-                  KW {String(report.reportKw).padStart(2, "0")} ({report.reportYear})
+                  {t("reportWeek", { kw: String(report.reportKw).padStart(2, "0"), year: report.reportYear })}
                 </strong>
                 <span className="small">
                   {formatDeDate(report.dates[0])}
@@ -154,7 +156,7 @@ export function ExportPanel({ year, kw }: { year: number; kw: number }) {
               <div className="toolbar">
                 {report.xlsxUrl ? (
                   <a className="btn primary" href={report.xlsxUrl} download={report.xlsxFilename}>
-                    Excel
+                    {t("excel")}
                   </a>
                 ) : report.xlsxBase64 ? (
                   <button
@@ -162,18 +164,18 @@ export function ExportPanel({ year, kw }: { year: number; kw: number }) {
                     className="btn primary"
                     onClick={() => downloadBase64(report.xlsxBase64!, report.xlsxFilename ?? `wochenbericht_KW${String(report.reportKw).padStart(2, "0")}.xlsx`)}
                   >
-                    Excel
+                    {t("excel")}
                   </button>
                 ) : null}
                 {report.pdfUrl ? (
                   <a className="btn" href={report.pdfUrl}>
-                    PDF
+                    {t("pdf")}
                   </a>
                 ) : null}
               </div>
 
               {report.rowsTruncated ? (
-                <div className="small">{report.rowsTruncated} Zeilen nicht exportiert</div>
+                <div className="small">{t("rowsNotExported", { count: report.rowsTruncated })}</div>
               ) : null}
 
               {report.warnings?.length ? (

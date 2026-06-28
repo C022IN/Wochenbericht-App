@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { DailyEntryForm } from "@/components/DailyEntryForm";
 import {
   addDays,
@@ -25,6 +26,8 @@ export default async function DayPage({ params }: PageProps) {
   const date = decodeURIComponent(rawDate);
   if (!isValidIsoDate(date)) notFound();
   await requirePageUser(`/day/${date}`);
+  const t = await getTranslations("day");
+  const tc = await getTranslations("common");
 
   const jsDate = parseIsoDate(date);
   const week = getIsoWeek(jsDate);
@@ -46,27 +49,27 @@ export default async function DayPage({ params }: PageProps) {
       <section className="hero">
         <div className="toolbar spread">
           <div>
-            <h1>Tagesbericht {formatDeDate(date)}</h1>
+            <h1>{t("title", { date: formatDeDate(date) })}</h1>
           </div>
           <div className="toolbar">
             <Link className="btn" href={`/day/${prevDate}`}>
-              Vortag
+              {t("prevDay")}
             </Link>
             <Link className="btn" href={`/day/${nextDate}`}>
-              Folgetag
+              {t("nextDay")}
             </Link>
             <Link className="btn" href={`/week/${week.year}/${week.kw}`}>
-              KW {String(week.kw).padStart(2, "0")}
+              {t("weekShort", { kw: String(week.kw).padStart(2, "0") })}
             </Link>
             <Link className="btn" href={`/?year=${week.year}`}>
-              Übersicht
+              {tc("overview")}
             </Link>
           </div>
         </div>
       </section>
 
       <section className="card">
-        <h2>Woche</h2>
+        <h2>{t("week")}</h2>
         <div className="day-strip" style={{ marginTop: "0.8rem" }}>
           {weekDatesToInfo(weekDates).map((day) => {
             const hasContent = entryHasMeaningfulContent(entriesByDate[day.date]);
@@ -80,7 +83,7 @@ export default async function DayPage({ params }: PageProps) {
               <Link key={day.date} href={`/day/${day.date}`} className={classes}>
                 <strong>{getWeekdayLabel(day.isoWeekday)}</strong>
                 <div>{formatDeDate(day.date)}</div>
-                <div className={hasContent ? "pill ok" : "pill"}>{hasContent ? "Erfasst" : "Leer"}</div>
+                <div className={hasContent ? "pill ok" : "pill"}>{hasContent ? t("captured") : t("empty")}</div>
               </Link>
             );
           })}

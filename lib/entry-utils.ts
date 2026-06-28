@@ -12,6 +12,7 @@ export function hasMeaningfulLineData(line: DailyLine) {
       line.ende.trim() ||
       line.pauseOverride.trim() ||
       line.dayHoursOverride.trim() ||
+      line.fahrzeit.trim() ||
       hasExplicitStatusCode ||
       line.ausloese.trim() ||
       line.zulage.trim() ||

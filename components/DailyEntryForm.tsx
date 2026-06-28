@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { startTransition, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useTranslations } from "next-intl";
 import { EMPTY_DAILY_LINE, type DailyEntry, type DailyLineType } from "@/lib/types";
+
+type EntryT = ReturnType<typeof useTranslations>;
 
 type DayContext = {
   weekYear: number;
@@ -52,14 +55,14 @@ function snapTimeToQuarter(value: string) {
   return `${String(snappedHours).padStart(2, "0")}:${String(snappedRemainder).padStart(2, "0")}`;
 }
 
-function pausePlaceholderForLine(line: DailyEntry["lines"][number]) {
-  if (line.pauseOverride.trim()) return "leer = auto";
+function pausePlaceholderForLine(line: DailyEntry["lines"][number], t: EntryT) {
+  if (line.pauseOverride.trim()) return t("pauseAutoEmpty");
 
   const netHours = parseDecimalInput(line.dayHoursOverride);
   const inferredPause = inferPauseFromNetHours(netHours);
-  if (inferredPause == null) return "leer = auto";
-  if (inferredPause <= 0) return "auto: 0";
-  return `auto: ${String(inferredPause).replace(".", ",")}`;
+  if (inferredPause == null) return t("pauseAutoEmpty");
+  if (inferredPause <= 0) return t("pauseAutoZero");
+  return t("pauseAutoValue", { value: String(inferredPause).replace(".", ",") });
 }
 
 const KNOWN_PROJEKTNUMMERN: { code: string; label: string }[] = [
@@ -103,7 +106,56 @@ function suggestProjektnummer(siteNameOrt: string, lohnType: string): string {
 
 const CUSTOM_SENTINEL = "__custom__";
 
-function ProjektnummerField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+const BAULEITER_LIST = ["Martin Pohl", "Peter Singer"];
+
+const TEAM_KOLLEGEN = [
+  "Alekseev Alik",
+  "Anjeo Collin Ambani",
+  "Auer Andreas",
+  "Aumuller Stefan Lorenz",
+  "Bayer Thomas",
+  "Berger Maurice",
+  "Bohme Siegfried",
+  "Brauer Beatrix",
+  "Buchwald Laura",
+  "Dauer Katja",
+  "Hartmann Michael",
+  "Hoffmann Albin",
+  "Imhof Nicole",
+  "Jutersonke Ronny",
+  "Kerling Stefan",
+  "Kickuth Joster",
+  "Kickuth Thorsten",
+  "Kindermann Henry",
+  "Kindermann Maik",
+  "Kolesov Wladimir",
+  "Kruger Ronny",
+  "Menzke Helmut",
+  "Nikol Peter",
+  "Pieper Marcus",
+  "Pohl Martin",
+  "Reichenbach Ronny",
+  "Rinderlin Barbara",
+  "Rosner Sebastian",
+  "Rothel Markus",
+  "Sauer Michael",
+  "Schmitt Beate",
+  "Schmitz Dennis",
+  "Schrempf Volker",
+  "Seidel Christian",
+  "Seidel Fabian",
+  "Singer Peter",
+  "Sommer Christian",
+  "Sontea Constantin",
+  "Stark Hannes",
+  "Tremel Frank",
+  "Varga Gabriel",
+  "Wagner Sergej",
+  "Walther Sven",
+  "Wirth Thomas",
+];
+
+function ProjektnummerField({ value, onChange, t }: { value: string; onChange: (v: string) => void; t: EntryT }) {
   const isKnown = KNOWN_PROJEKTNUMMERN.some((p) => p.code === value);
   const [customMode, setCustomMode] = useState(() => value !== "" && !KNOWN_PROJEKTNUMMERN.some((p) => p.code === value));
 
@@ -131,20 +183,73 @@ function ProjektnummerField({ value, onChange }: { value: string; onChange: (v: 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
       <select value={selectValue} onChange={handleSelectChange}>
-        <option value="">– keine –</option>
+        <option value="">{t("projNone")}</option>
         {KNOWN_PROJEKTNUMMERN.map((p) => (
           <option key={p.code} value={p.code}>
             {p.label} — {p.code}
           </option>
         ))}
-        <option value={CUSTOM_SENTINEL}>Sonstige (eigene Nummer)…</option>
+        <option value={CUSTOM_SENTINEL}>{t("projOther")}</option>
       </select>
       {customMode && (
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="z.B. P.0000000.0.00"
+          placeholder={t("projOtherPlaceholder")}
         />
+      )}
+    </div>
+  );
+}
+
+function SimpleDropdownField({
+  value,
+  onChange,
+  options,
+  placeholder,
+  noneLabel,
+  t,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  placeholder?: string;
+  noneLabel?: string;
+  t: EntryT;
+}) {
+  const resolvedNoneLabel = noneLabel ?? t("projNone");
+  const isKnown = options.includes(value);
+  const [customMode, setCustomMode] = useState(() => value !== "" && !options.includes(value));
+
+  const selectValue = customMode ? CUSTOM_SENTINEL : value;
+
+  if (!customMode && !isKnown && value !== "") setCustomMode(true);
+  if (customMode && isKnown) setCustomMode(false);
+
+  function handleSelectChange(e: ChangeEvent<HTMLSelectElement>) {
+    const v = e.target.value;
+    if (v === CUSTOM_SENTINEL) {
+      setCustomMode(true);
+      onChange("");
+    } else {
+      setCustomMode(false);
+      onChange(v);
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+      <select value={selectValue} onChange={handleSelectChange}>
+        <option value="">{resolvedNoneLabel}</option>
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+        <option value={CUSTOM_SENTINEL}>{t("dropdownOther")}</option>
+      </select>
+      {customMode && (
+        <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
       )}
     </div>
   );
@@ -198,6 +303,8 @@ export function DailyEntryForm({
   defaults: { proj: string; arbeit: string };
   weekContext: DayContext;
 }) {
+  const t = useTranslations("entry");
+  const tc = useTranslations("common");
   const [entry, setEntry] = useState(() => normalizeEntry(date, initialEntry, defaults));
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState("");
@@ -225,7 +332,7 @@ export function DailyEntryForm({
         } catch {
           data = null;
         }
-        if (!res.ok) throw new Error(data?.error || "Autospeichern fehlgeschlagen");
+        if (!res.ok) throw new Error(data?.error || t("saveError"));
 
         startTransition(() => {
           setSaveState("saved");
@@ -233,13 +340,13 @@ export function DailyEntryForm({
         window.setTimeout(() => setSaveState("idle"), 1200);
       } catch (e) {
         setSaveState("error");
-        const message = e instanceof Error ? e.message : "Autospeichern fehlgeschlagen";
-        setError(message === "Failed to fetch" ? "Autospeichern fehlgeschlagen (Server nicht erreichbar)" : message);
+        const message = e instanceof Error ? e.message : t("saveError");
+        setError(message === "Failed to fetch" ? t("saveErrorUnreachable") : message);
       }
     }, 650);
 
     return () => window.clearTimeout(timeout);
-  }, [date, latestPayload]);
+  }, [date, latestPayload, t]);
 
   function updateLine(index: number, patch: Partial<(typeof entry.lines)[number]>) {
     const normalizedPatch = { ...patch };
@@ -313,28 +420,28 @@ export function DailyEntryForm({
       <section className="card">
         <div className="toolbar spread">
           <div>
-            <h2 style={{ marginBottom: "0.35rem" }}>Eintrag {date}</h2>
+            <h2 style={{ marginBottom: "0.35rem" }}>{t("entryTitle", { date })}</h2>
             <div className="small">
-              <Link href={`/week/${weekContext.weekYear}/${weekContext.weekKw}`}>KW {weekContext.weekKw}</Link>
+              <Link href={`/week/${weekContext.weekYear}/${weekContext.weekKw}`}>{t("weekShort", { kw: weekContext.weekKw })}</Link>
             </div>
           </div>
           <div className="toolbar">
-            {saveState === "saving" ? <span className="pill">Speichern...</span> : null}
-            {saveState === "saved" ? <span className="pill ok">Gespeichert</span> : null}
-            {saveState === "error" ? <span className="pill err">Fehler</span> : null}
+            {saveState === "saving" ? <span className="pill">{tc("saving")}</span> : null}
+            {saveState === "saved" ? <span className="pill ok">{tc("saved")}</span> : null}
+            {saveState === "error" ? <span className="pill err">{tc("error")}</span> : null}
           </div>
         </div>
 
         <div className="field-grid" style={{ marginTop: "0.8rem" }}>
           <label>
-            <span className="label-title">Arbeitsstätte / Projekte</span>
+            <span className="label-title">{t("workplaceProjects")}</span>
             <input
               value={entry.arbeitsstaetteProjekte}
               onChange={(e) => setEntry((prev) => ({ ...prev, arbeitsstaetteProjekte: e.target.value }))}
             />
           </label>
           <label>
-            <span className="label-title">Art der Arbeit</span>
+            <span className="label-title">{t("typeOfWork")}</span>
             <input
               value={entry.artDerArbeit}
               onChange={(e) => setEntry((prev) => ({ ...prev, artDerArbeit: e.target.value }))}
@@ -344,7 +451,7 @@ export function DailyEntryForm({
 
         <div className="toolbar" style={{ marginTop: "0.75rem" }}>
           <button className="btn primary" type="button" onClick={addLine}>
-            Zeile
+            {t("addRow")}
           </button>
         </div>
 
@@ -352,42 +459,42 @@ export function DailyEntryForm({
       </section>
 
       <section className="card">
-        <h3>Arbeitszeilen</h3>
+        <h3>{t("workRows")}</h3>
         <div className="line-list">
           {entry.lines.map((line, index) => (
             <article className="line-card" key={line.id || index}>
               <header>
-                <h4>Zeile {index + 1}</h4>
+                <h4>{t("row", { n: index + 1 })}</h4>
                 <button className="btn" type="button" onClick={() => removeLine(index)}>
-                  Entfernen
+                  {t("remove")}
                 </button>
               </header>
 
               <div className="line-grid">
                 <label className="span-4">
-                  <span className="label-title">Arbeitsstelle / Ort</span>
+                  <span className="label-title">{t("siteLocation")}</span>
                   <input
                     value={line.siteNameOrt}
                     onChange={(e) => updateLine(index, { siteNameOrt: e.target.value })}
                     onBlur={(e) => autoFillProjOnSiteBlur(index, e.target.value)}
-                    placeholder="Baustelle / Ort"
+                    placeholder={t("sitePlaceholder")}
                   />
                 </label>
                 <label className="span-2">
-                  <span className="label-title">Zeilentyp</span>
+                  <span className="label-title">{t("rowType")}</span>
                   <select
                     value={line.lineType || "arbeitszeit"}
                     onChange={(e) => setLineType(index, e.target.value as DailyLineType)}
                   >
-                    <option value="arbeitszeit">Arbeitszeit-Zeile</option>
-                    <option value="baustelle">Baustelle-Zeile</option>
+                    <option value="arbeitszeit">{t("rowTypeWork")}</option>
+                    <option value="baustelle">{t("rowTypeSite")}</option>
                   </select>
                 </label>
 
                 {line.lineType !== "baustelle" ? (
                   <>
                     <label>
-                      <span className="label-title">Beginn</span>
+                      <span className="label-title">{t("start")}</span>
                       <input
                         type="time"
                         step={900}
@@ -396,7 +503,7 @@ export function DailyEntryForm({
                       />
                     </label>
                     <label>
-                      <span className="label-title">Ende</span>
+                      <span className="label-title">{t("end")}</span>
                       <input
                         type="time"
                         step={900}
@@ -405,25 +512,33 @@ export function DailyEntryForm({
                       />
                     </label>
                     <label>
-                      <span className="label-title">Pause (h)</span>
+                      <span className="label-title">{t("pause")}</span>
                       <input
                         value={line.pauseOverride}
                         onChange={(e) => updateLine(index, { pauseOverride: e.target.value })}
-                        placeholder={pausePlaceholderForLine(line)}
+                        placeholder={pausePlaceholderForLine(line, t)}
+                      />
+                    </label>
+                    <label>
+                      <span className="label-title">{t("fahrzeit")}</span>
+                      <input
+                        value={line.fahrzeit}
+                        onChange={(e) => updateLine(index, { fahrzeit: e.target.value })}
+                        placeholder={t("fahrzeitPlaceholder")}
                       />
                     </label>
                   </>
                 ) : null}
                 <label>
-                  <span className="label-title">Tag (x / Std)</span>
+                  <span className="label-title">{t("dayHours")}</span>
                   <input
                     value={line.dayHoursOverride}
                     onChange={(e) => updateLine(index, { dayHoursOverride: e.target.value })}
-                    placeholder="x / 0,5 / 1,0"
+                    placeholder={t("dayHoursPlaceholder")}
                   />
                 </label>
                 <label>
-                  <span className="label-title">Lohnart</span>
+                  <span className="label-title">{t("wageType")}</span>
                   <select value={line.lohnType} onChange={(e) => updateLine(index, { lohnType: e.target.value })}>
                     <option value="">-</option>
                     <option value="S">S</option>
@@ -436,7 +551,7 @@ export function DailyEntryForm({
                 </label>
 
                 <label>
-                  <span className="label-title">Auslöse</span>
+                  <span className="label-title">{t("allowance")}</span>
                   <select value={line.ausloese} onChange={(e) => updateLine(index, { ausloese: e.target.value })}>
                     <option value="">-</option>
                     <option value="NA">NA</option>
@@ -444,36 +559,47 @@ export function DailyEntryForm({
                   </select>
                 </label>
                 <label>
-                  <span className="label-title">Zulage</span>
+                  <span className="label-title">{t("bonus")}</span>
                   <input value={line.zulage} onChange={(e) => updateLine(index, { zulage: e.target.value })} />
                 </label>
                 <label className="span-2">
-                  <span className="label-title">Projektnummer</span>
+                  <span className="label-title">{t("projectNumber")}</span>
                   <ProjektnummerField
                     value={line.projektnummer}
                     onChange={(v) => updateLine(index, { projektnummer: v })}
+                    t={t}
                   />
                 </label>
                 <label className="span-2">
-                  <span className="label-title">Kabelschacht</span>
+                  <span className="label-title">{t("cableShaft")}</span>
                   <input
                     value={line.kabelschachtInfo}
                     onChange={(e) => updateLine(index, { kabelschachtInfo: e.target.value })}
                   />
                 </label>
                 <label>
-                  <span className="label-title">SM-Nr.</span>
+                  <span className="label-title">{t("smNr")}</span>
                   <input value={line.smNr} onChange={(e) => updateLine(index, { smNr: e.target.value })} />
                 </label>
                 <label className="span-3">
-                  <span className="label-title">Bauleiter</span>
-                  <input value={line.bauleiter} onChange={(e) => updateLine(index, { bauleiter: e.target.value })} />
+                  <span className="label-title">{t("siteManager")}</span>
+                  <SimpleDropdownField
+                    value={line.bauleiter}
+                    onChange={(v) => updateLine(index, { bauleiter: v })}
+                    options={BAULEITER_LIST}
+                    placeholder={t("namePlaceholder")}
+                    t={t}
+                  />
                 </label>
                 <label className="span-3">
-                  <span className="label-title">Kollege / allein</span>
-                  <input
+                  <span className="label-title">{t("colleague")}</span>
+                  <SimpleDropdownField
                     value={line.arbeitskollege}
-                    onChange={(e) => updateLine(index, { arbeitskollege: e.target.value })}
+                    onChange={(v) => updateLine(index, { arbeitskollege: v })}
+                    options={["allein", ...TEAM_KOLLEGEN]}
+                    placeholder={t("namePlaceholder")}
+                    noneLabel={t("colleagueNone")}
+                    t={t}
                   />
                 </label>
               </div>

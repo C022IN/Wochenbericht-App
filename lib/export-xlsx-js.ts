@@ -106,13 +106,26 @@ function inferPauseFromNetHours(netHours: number | null): number | null {
   return null;
 }
 
+// "Fahrzeiten" rows are the per-day travel-time summary; their label is fixed.
+// Travel hours are written as entered (the form shows "max 3" only as a soft hint).
+const FAHRZEIT_LABEL = "Fahrzeiten";
+
+function fahrzeitHours(value: string): number | null {
+  const parsed = parseDecimal(value);
+  if (typeof parsed !== "number") return null;
+  if (!(parsed > 0)) return null;
+  return parsed;
+}
+
 type ExportRow = {
   date: string;
+  kind?: "site" | "fahrzeit";
   siteNameOrt: string;
   beginn: string;
   ende: string;
   pauseOverride: string;
   dayHoursOverride: string;
+  fahrzeit?: string;
   lohnType: string;
   ausloese: string;
   zulage: string;
@@ -261,11 +274,18 @@ export async function exportXlsxJs(
   for (let idx = 0; idx < rowsToWrite.length; idx++) {
     const rowData = rowsToWrite[idx];
     const rowNo = DATA_ROW_START + idx;
-    const dayCellValue = computeDayCellValue(rowData);
+    const siteLabel = textOrNull(rowData.siteNameOrt);
+    const travelHrs = rowData.kind === "fahrzeit" ? fahrzeitHours(rowData.fahrzeit ?? "") : null;
+    // A dedicated travel row = an arbeitszeit line with no site name but a travel value.
+    // Its day column = travel hours; the day total still comes from the E/F bracket (O/P formulas).
+    // Named rows keep their site name + normal day-hours; "Fahrzeiten" as a row name still works.
+    const isTravelRow = travelHrs !== null && !siteLabel;
+    const dayCellValue = isTravelRow ? travelHrs : computeDayCellValue(rowData);
     const wdIdx = isoWeekdayIndex(rowData.date);
     const weekdayCol = wdIdx !== null ? WEEKDAY_COLS[wdIdx] : null;
 
-    ws.getCell(`A${rowNo}`).value = textOrNull(rowData.siteNameOrt);
+    ws.getCell(`A${rowNo}`).value =
+      siteLabel ?? (rowData.kind === "fahrzeit" ? FAHRZEIT_LABEL : null);
 
     const startFrac = timeToExcelFraction(rowData.beginn);
     const endFrac = timeToExcelFraction(rowData.ende);
