@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 
 export function LoginForm({ nextPath = "/" }: { nextPath?: string }) {
+  const t = useTranslations("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,11 +20,11 @@ export function LoginForm({ nextPath = "/" }: { nextPath?: string }) {
         body: JSON.stringify({ identifier: email, password })
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(data.error || "Anmeldung fehlgeschlagen");
+      if (!res.ok) throw new Error(data.error || t("loginFailed"));
 
       window.location.href = nextPath || "/";
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Anmeldung fehlgeschlagen");
+      setError(e instanceof Error ? e.message : t("loginFailed"));
     } finally {
       setLoading(false);
     }
@@ -31,23 +33,23 @@ export function LoginForm({ nextPath = "/" }: { nextPath?: string }) {
   return (
     <section className="card" style={{ maxWidth: 460, margin: "8vh auto 0", width: "100%" }}>
       <div className="toolbar spread">
-        <h2>Anmeldung</h2>
-        <span className="pill">Login</span>
+        <h2>{t("title")}</h2>
+        <span className="pill">{t("badge")}</span>
       </div>
 
       <div className="field-grid" style={{ marginTop: "0.75rem" }}>
         <label className="span-2">
-          <span className="label-title">E-Mail oder Benutzername</span>
+          <span className="label-title">{t("emailOrUsername")}</span>
           <input
             type="text"
             autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="name@example.com oder name"
+            placeholder={t("emailPlaceholder")}
           />
         </label>
         <label className="span-2">
-          <span className="label-title">Passwort</span>
+          <span className="label-title">{t("password")}</span>
           <input
             type="password"
             autoComplete="current-password"
@@ -59,12 +61,12 @@ export function LoginForm({ nextPath = "/" }: { nextPath?: string }) {
 
       <div className="toolbar" style={{ marginTop: "0.9rem" }}>
         <button className="btn primary" type="button" onClick={submit} disabled={loading || !email || !password}>
-          {loading ? "Bitte warten..." : "Einloggen"}
+          {loading ? t("pleaseWait") : t("signIn")}
         </button>
       </div>
 
       <p className="small" style={{ marginTop: "0.6rem" }}>
-        Benutzername = Teil vor dem @ in der E-Mail-Adresse
+        {t("usernameHint")}
       </p>
       {error ? <p className="status-text" style={{ color: "var(--danger)" }}>{error}</p> : null}
     </section>

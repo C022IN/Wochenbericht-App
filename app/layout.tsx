@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getMessages, getTranslations } from "next-intl/server";
 import "./globals.css";
 import { getCurrentUser, isSupabaseAuthEnabled } from "@/lib/auth";
 import { LogoutButton } from "@/components/LogoutButton";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 function capitalizeNamePart(value: string) {
   if (!value) return "";
@@ -40,30 +43,39 @@ function formatDisplayNameFromEmail(email?: string | null) {
   return fullName || null;
 }
 
-export const metadata: Metadata = {
-  title: "Wochenbericht App",
-  description: "Realtime Wochenbericht entry and template-based Excel/PDF export"
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("app");
+  return {
+    title: t("title"),
+    description: t("description")
+  };
+}
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const authEnabled = isSupabaseAuthEnabled();
   const user = authEnabled ? await getCurrentUser() : null;
   const userLabel = formatDisplayNameFromEmail(user?.email) || user?.id || "";
 
+  const locale = await getLocale();
+  const messages = await getMessages();
+
   return (
-    <html lang="de">
+    <html lang={locale}>
       <body>
-        {authEnabled && user ? (
+        <NextIntlClientProvider locale={locale} messages={messages}>
           <div className="shell" style={{ paddingTop: "0.75rem", paddingBottom: 0 }}>
             <div className="toolbar spread card" style={{ padding: "0.6rem 0.8rem" }}>
               <div className="small" style={{ overflowWrap: "anywhere" }}>
-                {userLabel}
+                {authEnabled && user ? userLabel : null}
               </div>
-              <LogoutButton />
+              <div className="toolbar">
+                <LanguageSwitcher />
+                {authEnabled && user ? <LogoutButton /> : null}
+              </div>
             </div>
           </div>
-        ) : null}
-        {children}
+          {children}
+        </NextIntlClientProvider>
       </body>
     </html>
   );

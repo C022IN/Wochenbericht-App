@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import {
   formatDeDate,
   getIsoWeek,
@@ -29,6 +30,7 @@ function parseYear(searchParams?: SearchParams) {
 
 export default async function HomePage({ searchParams }: PageProps) {
   await requirePageUser("/");
+  const t = await getTranslations("home");
   const resolvedSearchParams = await searchParams;
   const year = parseYear(resolvedSearchParams);
   const [weekSummaries, profile, template] = await Promise.all([
@@ -72,24 +74,24 @@ export default async function HomePage({ searchParams }: PageProps) {
   return (
     <main className="shell grid" style={{ gap: "1rem" }}>
       <section className="hero">
-        <h1>Wochenbericht</h1>
-        <p>1. KW wählen  2. Tag ausfüllen  3. Export</p>
+        <h1>{t("title")}</h1>
+        <p>{t("subtitle")}</p>
       </section>
 
       <section className="grid cols-2">
         <section className="card">
           <div className="toolbar spread">
             <div>
-              <h2>KW {year}</h2>
+              <h2>{t("weeksOfYear", { year })}</h2>
               <p className="small" style={{ marginTop: "0.2rem" }}>
-                {totalWeeks} Wochen
+                {t("weeksCount", { count: totalWeeks })}
               </p>
             </div>
 
             <div className="toolbar">
               <div>
                 <div className="small" style={{ marginBottom: "0.25rem" }}>
-                  Jahr
+                  {t("year")}
                 </div>
                 <div className="toolbar">
                   {yearOptions.map((y) => (
@@ -101,10 +103,10 @@ export default async function HomePage({ searchParams }: PageProps) {
               </div>
 
               <Link className="btn" href={`/day/${todayIso}`}>
-                Heute
+                {t("today")}
               </Link>
               <Link className="btn primary" href={`/week/${todayWeek.year}/${todayWeek.kw}`}>
-                Aktuelle KW
+                {t("currentWeek")}
               </Link>
             </div>
           </div>
@@ -117,7 +119,7 @@ export default async function HomePage({ searchParams }: PageProps) {
 
           {!template.ok ? (
             <section className="card">
-              <h2>Template fehlt</h2>
+              <h2>{t("templateMissing")}</h2>
               <p className="small">{template.error}</p>
               <div className="muted-box" style={{ marginTop: "0.6rem", wordBreak: "break-all" }}>
                 {template.templatePath}

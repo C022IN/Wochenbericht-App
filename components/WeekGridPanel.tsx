@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 export type WeekDisplayItem = {
   year: number;
@@ -19,6 +20,7 @@ export type WeekDisplayItem = {
 };
 
 export function WeekGridPanel({ items, currentIdx }: { items: WeekDisplayItem[]; currentIdx: number }) {
+  const t = useTranslations("weekGrid");
   const [expanded, setExpanded] = useState(false);
 
   const start = Math.max(0, currentIdx - 1);
@@ -41,7 +43,7 @@ export function WeekGridPanel({ items, currentIdx }: { items: WeekDisplayItem[];
                 {item.isCarryOverToNextYear ? ` (${item.displayYear})` : ""}
               </strong>
               {item.isMonthSplit ? (
-                <span className="pill warn">Geteilt</span>
+                <span className="pill warn">{t("split")}</span>
               ) : (
                 <span className="pill ok">{item.filledDays}/7</span>
               )}
@@ -54,7 +56,7 @@ export function WeekGridPanel({ items, currentIdx }: { items: WeekDisplayItem[];
               <span>{item.last}</span>
             </div>
 
-            <div className="progress" aria-label={`Fortschritt KW ${item.displayKw}`}>
+            <div className="progress" aria-label={t("progressAria", { kw: item.displayKw })}>
               <span style={{ width: `${item.pct}%` }} />
             </div>
           </Link>
@@ -64,16 +66,16 @@ export function WeekGridPanel({ items, currentIdx }: { items: WeekDisplayItem[];
       <div className="toolbar" style={{ marginTop: "0.75rem" }}>
         {expanded ? (
           <button className="btn" type="button" onClick={() => setExpanded(false)}>
-            Minimieren
+            {t("minimize")}
           </button>
         ) : (
           <>
             <button className="btn" type="button" onClick={() => setExpanded(true)}>
-              Alle Wochen anzeigen
+              {t("showAll")}
             </button>
             {currentIdx > 0 ? (
               <span className="small" style={{ color: "var(--muted)" }}>
-                KW 01 – KW {String(items[start].displayKw).padStart(2, "0")} ausgeblendet
+                {t("hiddenRange", { kw: String(items[start].displayKw).padStart(2, "0") })}
               </span>
             ) : null}
           </>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { ExportPanel } from "@/components/ExportPanel";
 import { WeekCarDataForm } from "@/components/WeekCarDataForm";
 import {
@@ -38,6 +39,9 @@ export default async function WeekPage({ params }: PageProps) {
   const parsed = parseParams(resolvedParams);
   if (!parsed) notFound();
 
+  const t = await getTranslations("week");
+  const tc = await getTranslations("common");
+
   const { year, kw } = parsed;
   const weekDates = getIsoWeekDates(year, kw);
   const isoDates = weekDates.map((d) => d.toISOString().slice(0, 10));
@@ -67,16 +71,16 @@ export default async function WeekPage({ params }: PageProps) {
           </div>
           <div className="toolbar">
             <Link className="btn" href={`/week/${prevWeek.year}/${prevWeek.kw}`}>
-              Vorwoche
+              {t("prevWeek")}
             </Link>
             <Link className="btn" href={`/week/${nextWeek.year}/${nextWeek.kw}`}>
-              Folgewoche
+              {t("nextWeek")}
             </Link>
             <Link className="btn" href={`/day/${isoDates[0]}`}>
-              Montag
+              {t("monday")}
             </Link>
             <Link className="btn" href={`/?year=${year}`}>
-              Übersicht
+              {tc("overview")}
             </Link>
           </div>
         </div>
@@ -84,10 +88,10 @@ export default async function WeekPage({ params }: PageProps) {
 
       <section className="card">
         <div className="toolbar spread">
-          <h2>Tage</h2>
+          <h2>{t("days")}</h2>
           <div className="toolbar">
             <span className={summary.isMonthSplit ? "pill warn" : "pill ok"}>
-              {summary.isMonthSplit ? "Geteilt" : "OK"}
+              {summary.isMonthSplit ? t("split") : t("ok")}
             </span>
             <span className="pill">{summary.filledDays}/7</span>
           </div>
@@ -108,7 +112,7 @@ export default async function WeekPage({ params }: PageProps) {
                 <strong>{getWeekdayLabel(day.isoWeekday)}</strong>
                 <div>{formatDeDate(day.date)}</div>
                 <div className="small">{getMonthLabelDe(day.month)}</div>
-                <div className={lineCount ? "pill ok" : "pill"}>{lineCount ? `${lineCount} Zeilen` : "Leer"}</div>
+                <div className={lineCount ? "pill ok" : "pill"}>{lineCount ? t("linesCount", { count: lineCount }) : t("empty")}</div>
               </Link>
             );
           })}
@@ -117,7 +121,7 @@ export default async function WeekPage({ params }: PageProps) {
 
       <section className="grid cols-2">
         <section className="card">
-          <h2>Dateien</h2>
+          <h2>{t("files")}</h2>
           <div className="segment-list" style={{ marginTop: "0.8rem" }}>
             {segments.map((segment) => {
               const segWeekDisplay = getSegmentWeekDisplayInfo(year, kw, segment.year);
@@ -128,7 +132,7 @@ export default async function WeekPage({ params }: PageProps) {
                       {getMonthLabelDe(segment.month)} {segment.year}
                     </strong>
                     <span className={segment.isSingleDay ? "pill warn" : "pill ok"}>
-                      {segment.isSingleDay ? "1 Tag" : `${segment.dates.length} Tage`}
+                      {segment.isSingleDay ? t("oneDay") : t("daysCount", { count: segment.dates.length })}
                     </span>
                   </div>
                   <div className="small">
@@ -136,7 +140,7 @@ export default async function WeekPage({ params }: PageProps) {
                   </div>
                   <div className="toolbar">
                     <span className={`pill ${segWeekDisplay.isCarryOverToNextYear ? "warn" : ""}`}>
-                      KW {String(segWeekDisplay.displayKw).padStart(2, "0")} ({segWeekDisplay.displayYear})
+                      {t("weekWithYear", { kw: String(segWeekDisplay.displayKw).padStart(2, "0"), year: segWeekDisplay.displayYear })}
                     </span>
                   </div>
                 </article>

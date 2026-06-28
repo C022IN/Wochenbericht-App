@@ -27,13 +27,18 @@ type ExportRequestContext = {
   requestCookie?: string;
 };
 
+// Per-day travel-time ("Fahrzeiten") rows carry this internal cost code by default.
+const FAHRZEIT_PROJEKTNUMMER = "G.014182.806.00";
+
 type ExportRow = {
   date: string;
+  kind: "site" | "fahrzeit";
   siteNameOrt: string;
   beginn: string;
   ende: string;
   pauseOverride: string;
   dayHoursOverride: string;
+  fahrzeit: string;
   lohnType: string;
   ausloese: string;
   zulage: string;
@@ -192,9 +197,11 @@ function flattenRowsForSegment(
     if (!entry) continue;
     for (const line of entry.lines) {
       const isBaustelleLine = line.lineType === "baustelle";
+      const kind: ExportRow["kind"] = isBaustelleLine ? "site" : "fahrzeit";
       const beginn = isBaustelleLine ? "" : line.beginn;
       const ende = isBaustelleLine ? "" : line.ende;
       const pauseOverride = isBaustelleLine ? "" : line.pauseOverride;
+      const fahrzeit = isBaustelleLine ? "" : line.fahrzeit;
       const hasExplicitStatusCode = (() => {
         const code = line.lohnType.trim().toUpperCase();
         return Boolean(code && code !== "S");
@@ -203,6 +210,7 @@ function flattenRowsForSegment(
         line.siteNameOrt.trim() ||
         beginn.trim() ||
         ende.trim() ||
+        fahrzeit.trim() ||
         line.dayHoursOverride.trim() ||
         hasExplicitStatusCode ||
         line.ausloese.trim() ||
@@ -214,8 +222,18 @@ function flattenRowsForSegment(
         line.arbeitskollege.trim();
       if (!hasMeaningfulData) continue;
 
+      // A dedicated "Fahrzeiten" travel row = an arbeitszeit line with NO site name but a travel value.
+      // A *named* arbeitszeit line stays a normal site-with-bracket row (keeps its name + day hours),
+      // so users who add their own row literally named "Fahrzeiten" keep working unchanged.
+      const isTravelRow = kind === "fahrzeit" && !line.siteNameOrt.trim() && Boolean(fahrzeit.trim());
+      const projektnummer =
+        isTravelRow && !line.projektnummer.trim()
+          ? FAHRZEIT_PROJEKTNUMMER
+          : line.projektnummer;
+
       rows.push({
         date,
+        kind,
         siteNameOrt: line.siteNameOrt,
         beginn,
         ende,
@@ -223,10 +241,11 @@ function flattenRowsForSegment(
         dayHoursOverride:
           line.dayHoursOverride.trim() ||
           (beginn.trim() && ende.trim() ? "__AUTO_FROM_TIME__" : ""),
+        fahrzeit,
         lohnType: line.lohnType,
         ausloese: line.ausloese,
         zulage: line.zulage,
-        projektnummer: line.projektnummer,
+        projektnummer,
         kabelschachtInfo: line.kabelschachtInfo,
         smNr: line.smNr,
         bauleiter: line.bauleiter,
