@@ -30,6 +30,22 @@ type ExportRequestContext = {
 // Per-day travel-time ("Fahrzeiten") rows carry this internal cost code by default.
 const FAHRZEIT_PROJEKTNUMMER = "G.014182.806.00";
 
+// Parse a Fahrzeit value ("2,5" or "2.5") to positive hours, or null if not a usable number.
+function parseFahrzeit(value: string): number | null {
+  const n = parseFloat(value.trim().replace(",", "."));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// Format summed travel hours back to a plain decimal string both exporters parse (dot or comma).
+function formatFahrzeit(hours: number): string {
+  return String(parseFloat(hours.toFixed(2)));
+}
+
+// True when a site name is an old-style manual travel row ("Fahrzeit", "Fahrzeiten", "fahrzet", …).
+function isFahrzeitLabel(siteName: string): boolean {
+  return /^\s*fahrze/i.test(siteName);
+}
+
 type ExportRow = {
   date: string;
   kind: "site" | "fahrzeit";
@@ -195,6 +211,15 @@ function flattenRowsForSegment(
   for (const date of segmentDates) {
     const entry = entries[date];
     if (!entry) continue;
+
+    // Per-day travel accumulation: the Fahrzeit field on *named* work rows (which are otherwise
+    // rendered as normal site rows and would drop their travel value) is summed into a single
+    // synthetic "Fahrzeiten" row appended after the day's rows. `dayHasTravelRow` guards against
+    // double-counting when the day already carries an old-style manual travel row (a dedicated
+    // no-name arbeitszeit travel line, or a site row literally named "Fahrzeit(en)").
+    let dayFahrzeitFieldSum = 0;
+    let dayHasTravelRow = false;
+
     for (const line of entry.lines) {
       const isBaustelleLine = line.lineType === "baustelle";
       const kind: ExportRow["kind"] = isBaustelleLine ? "site" : "fahrzeit";
@@ -231,6 +256,15 @@ function flattenRowsForSegment(
           ? FAHRZEIT_PROJEKTNUMMER
           : line.projektnummer;
 
+      // Old-style manual travel rows already represent the day's travel — don't add a synthetic one.
+      if (isTravelRow || isFahrzeitLabel(line.siteNameOrt)) {
+        dayHasTravelRow = true;
+      } else if (kind === "fahrzeit" && line.siteNameOrt.trim()) {
+        // Named work row: its Fahrzeit field is otherwise dropped — fold it into the day's total.
+        const hrs = parseFahrzeit(fahrzeit);
+        if (hrs !== null) dayFahrzeitFieldSum += hrs;
+      }
+
       rows.push({
         date,
         kind,
@@ -250,6 +284,28 @@ function flattenRowsForSegment(
         smNr: line.smNr,
         bauleiter: line.bauleiter,
         arbeitskollege: line.arbeitskollege
+      });
+    }
+
+    // Append the auto-generated per-day "Fahrzeiten" row (one per day) from the summed field values.
+    if (!dayHasTravelRow && dayFahrzeitFieldSum > 0) {
+      rows.push({
+        date,
+        kind: "fahrzeit",
+        siteNameOrt: "",
+        beginn: "",
+        ende: "",
+        pauseOverride: "",
+        dayHoursOverride: "",
+        fahrzeit: formatFahrzeit(dayFahrzeitFieldSum),
+        lohnType: "S",
+        ausloese: "",
+        zulage: "",
+        projektnummer: FAHRZEIT_PROJEKTNUMMER,
+        kabelschachtInfo: "",
+        smNr: "",
+        bauleiter: "",
+        arbeitskollege: ""
       });
     }
   }
