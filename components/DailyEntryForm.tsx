@@ -4,6 +4,7 @@ import Link from "next/link";
 import { startTransition, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useTranslations } from "next-intl";
 import { EMPTY_DAILY_LINE, type DailyEntry, type DailyLineType } from "@/lib/types";
+import { BAULEITER_LIST } from "@/lib/team";
 
 type EntryT = ReturnType<typeof useTranslations>;
 
@@ -106,7 +107,6 @@ function suggestProjektnummer(siteNameOrt: string, lohnType: string): string {
 
 const CUSTOM_SENTINEL = "__custom__";
 
-const BAULEITER_LIST = ["Martin Pohl", "Peter Singer"];
 
 const TEAM_KOLLEGEN = [
   "Alekseev Alik",
@@ -262,17 +262,21 @@ function makeLineId() {
   return `line_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
-function createBlankLine() {
-  return { ...EMPTY_DAILY_LINE(), id: makeLineId() };
+function createBlankLine(defaultBauleiter = "") {
+  return { ...EMPTY_DAILY_LINE(), id: makeLineId(), bauleiter: defaultBauleiter };
 }
 
-function normalizeEntry(date: string, initial: DailyEntry | null, defaults: { proj: string; arbeit: string }): DailyEntry {
+function normalizeEntry(
+  date: string,
+  initial: DailyEntry | null,
+  defaults: { proj: string; arbeit: string; bauleiter: string }
+): DailyEntry {
   if (!initial) {
     return {
       date,
       arbeitsstaetteProjekte: defaults.proj,
       artDerArbeit: defaults.arbeit,
-      lines: [createBlankLine()],
+      lines: [createBlankLine(defaults.bauleiter)],
       updatedAt: new Date().toISOString()
     };
   }
@@ -287,7 +291,7 @@ function normalizeEntry(date: string, initial: DailyEntry | null, defaults: { pr
           lineType: normalizedLineType
         };
       })
-    : [createBlankLine()];
+    : [createBlankLine(defaults.bauleiter)];
 
   return { ...initial, date, lines };
 }
@@ -300,7 +304,7 @@ export function DailyEntryForm({
 }: {
   date: string;
   initialEntry: DailyEntry | null;
-  defaults: { proj: string; arbeit: string };
+  defaults: { proj: string; arbeit: string; bauleiter: string };
   weekContext: DayContext;
 }) {
   const t = useTranslations("entry");
@@ -390,14 +394,17 @@ export function DailyEntryForm({
   function addLine() {
     setEntry((prev) => ({
       ...prev,
-      lines: [...prev.lines, { ...createBlankLine(), lineType: "baustelle" }]
+      lines: [...prev.lines, { ...createBlankLine(defaults.bauleiter), lineType: "baustelle" }]
     }));
   }
 
   function removeLine(index: number) {
     setEntry((prev) => ({
       ...prev,
-      lines: prev.lines.length <= 1 ? [createBlankLine()] : prev.lines.filter((_, i) => i !== index)
+      lines:
+        prev.lines.length <= 1
+          ? [createBlankLine(defaults.bauleiter)]
+          : prev.lines.filter((_, i) => i !== index)
     }));
   }
 

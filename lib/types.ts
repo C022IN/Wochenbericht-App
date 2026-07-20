@@ -9,6 +9,7 @@ export type UserProfile = {
   vorname: string;
   defaultArbeitsstaetteProjekte: string;
   defaultArtDerArbeit: string;
+  defaultBauleiter: string;                   // pre-fills the Bauleiter on new lines
   kennzeichen: string;                        // primary car plate → U50
   weekData: Record<string, WeekCarData>;      // keyed "YYYY-WW", e.g. "2026-09"
 };
@@ -80,6 +81,7 @@ export const EMPTY_PROFILE: UserProfile = {
   vorname: "",
   defaultArbeitsstaetteProjekte: "",
   defaultArtDerArbeit: "S05",
+  defaultBauleiter: "",
   kennzeichen: "",
   weekData: {}
 };

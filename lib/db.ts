@@ -121,6 +121,7 @@ function sanitizeProfile(profile: unknown): UserProfile {
     defaultArbeitsstaetteProjekte:
       typeof source.defaultArbeitsstaetteProjekte === "string" ? source.defaultArbeitsstaetteProjekte : "",
     defaultArtDerArbeit: typeof source.defaultArtDerArbeit === "string" && source.defaultArtDerArbeit ? source.defaultArtDerArbeit : "S05",
+    defaultBauleiter: typeof source.defaultBauleiter === "string" ? source.defaultBauleiter : "",
     kennzeichen: typeof source.kennzeichen === "string" ? source.kennzeichen : "",
     weekData: sanitizeWeekData(source.weekData)
   };
@@ -400,6 +401,10 @@ export async function saveProfile(profile: Partial<AppDb["profile"]>) {
       typeof profile.defaultArtDerArbeit === "string"
         ? profile.defaultArtDerArbeit
         : currentProfile.defaultArtDerArbeit,
+    defaultBauleiter:
+      typeof profile.defaultBauleiter === "string"
+        ? profile.defaultBauleiter
+        : currentProfile.defaultBauleiter,
     kennzeichen: typeof profile.kennzeichen === "string" ? profile.kennzeichen : currentProfile.kennzeichen,
     weekData: typeof profile.weekData === "object" && profile.weekData !== null
       ? sanitizeWeekData(profile.weekData)
