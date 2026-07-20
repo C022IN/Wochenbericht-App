@@ -126,6 +126,8 @@
     "vorname": "Имя",
     "defaultWorkplace": "Место работы / Проекты (по умолчанию)",
     "defaultTypeOfWork": "Вид работы (по умолчанию)",
+    "defaultBauleiter": "Прораб (по умолчанию)",
+    "noDefault": "– без значения –",
     "defaultPlate": "Гос. номер (по умолчанию)",
     "platePlaceholder": "напр. LIF-B123",
     "saveFailed": "Не удалось сохранить"

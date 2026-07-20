@@ -95,7 +95,8 @@ export default async function DayPage({ params }: PageProps) {
         initialEntry={entry}
         defaults={{
           proj: profile.defaultArbeitsstaetteProjekte,
-          arbeit: profile.defaultArtDerArbeit
+          arbeit: profile.defaultArtDerArbeit,
+          bauleiter: profile.defaultBauleiter
         }}
         weekContext={{ weekYear: week.year, weekKw: week.kw }}
       />

@@ -126,6 +126,8 @@
     "vorname": "Vorname",
     "defaultWorkplace": "Arbeitsstätte / Projekte (Standard)",
     "defaultTypeOfWork": "Art der Arbeit (Standard)",
+    "defaultBauleiter": "Bauleiter (Standard)",
+    "noDefault": "– kein Standard –",
     "defaultPlate": "KFZ-Kennzeichen (Standard)",
     "platePlaceholder": "z.B. LIF-B123",
     "saveFailed": "Speichern fehlgeschlagen"

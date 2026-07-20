@@ -126,6 +126,8 @@
     "vorname": "First name",
     "defaultWorkplace": "Workplace / Projects (default)",
     "defaultTypeOfWork": "Type of work (default)",
+    "defaultBauleiter": "Site manager (default)",
+    "noDefault": "– no default –",
     "defaultPlate": "Licence plate (default)",
     "platePlaceholder": "e.g. LIF-B123",
     "saveFailed": "Save failed"

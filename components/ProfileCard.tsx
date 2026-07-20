@@ -3,6 +3,7 @@
 import { startTransition, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { UserProfile } from "@/lib/types";
+import { BAULEITER_LIST } from "@/lib/team";
 
 export function ProfileCard({ initialProfile }: { initialProfile: UserProfile }) {
   const t = useTranslations("profile");
@@ -70,6 +71,20 @@ export function ProfileCard({ initialProfile }: { initialProfile: UserProfile })
             value={profile.defaultArtDerArbeit}
             onChange={(e) => setProfile((p) => ({ ...p, defaultArtDerArbeit: e.target.value }))}
           />
+        </label>
+        <label>
+          <span className="label-title">{t("defaultBauleiter")}</span>
+          <select
+            value={profile.defaultBauleiter}
+            onChange={(e) => setProfile((p) => ({ ...p, defaultBauleiter: e.target.value }))}
+          >
+            <option value="">{t("noDefault")}</option>
+            {BAULEITER_LIST.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           <span className="label-title">{t("defaultPlate")}</span>
