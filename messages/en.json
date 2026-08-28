@@ -157,5 +157,10 @@
     "title": "Page not found",
     "hint": "Please check the date or week.",
     "toOverview": "Back to overview"
+  },
+  "errorPage": {
+    "title": "Temporarily unavailable",
+    "hint": "The app couldn't load just now — the database may be waking up. Please try again in a few seconds.",
+    "retry": "Try again"
   }
 }

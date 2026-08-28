@@ -22,6 +22,8 @@ function buildHeaders(config: SupabaseConfig, extra?: HeadersInit) {
   };
 }
 
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export async function supabaseRestJson<T>(
   path: string,
   init?: Omit<RequestInit, "headers"> & { headers?: HeadersInit }
@@ -31,30 +33,50 @@ export async function supabaseRestJson<T>(
     throw new Error("Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
   }
 
-  const response = await fetch(`${config.url}${path}`, {
-    ...init,
-    headers: buildHeaders(config, init?.headers)
-  });
+  const url = `${config.url}${path}`;
+  const headers = buildHeaders(config, init?.headers);
 
-  const text = await response.text();
-  let parsed: unknown = null;
-  if (text) {
+  // Retry network errors and 5xx (e.g. a free-tier project resuming from auto-pause) a
+  // couple of times before giving up, so a cold start is bridged rather than surfaced as a
+  // hard error. 4xx responses are real client errors and are thrown immediately.
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 0; ; attempt++) {
+    let response: Response;
     try {
-      parsed = JSON.parse(text);
-    } catch {
-      parsed = text;
+      response = await fetch(url, { ...init, headers });
+    } catch (networkError) {
+      if (attempt < MAX_ATTEMPTS - 1) {
+        await delay(600 * (attempt + 1));
+        continue;
+      }
+      throw networkError;
     }
-  }
 
-  if (!response.ok) {
-    const message =
-      typeof parsed === "object" && parsed && "message" in parsed && typeof (parsed as { message?: unknown }).message === "string"
-        ? (parsed as { message: string }).message
-        : `Supabase request failed (${response.status})`;
-    throw new Error(message);
-  }
+    if (response.status >= 500 && attempt < MAX_ATTEMPTS - 1) {
+      await delay(600 * (attempt + 1));
+      continue;
+    }
 
-  return parsed as T;
+    const text = await response.text();
+    let parsed: unknown = null;
+    if (text) {
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        parsed = text;
+      }
+    }
+
+    if (!response.ok) {
+      const message =
+        typeof parsed === "object" && parsed && "message" in parsed && typeof (parsed as { message?: unknown }).message === "string"
+          ? (parsed as { message: string }).message
+          : `Supabase request failed (${response.status})`;
+      throw new Error(message);
+    }
+
+    return parsed as T;
+  }
 }
 
 export function postgrestIn(values: string[]) {

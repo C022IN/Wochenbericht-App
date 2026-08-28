@@ -157,5 +157,10 @@
     "title": "Seite nicht gefunden",
     "hint": "Bitte Datum oder KW prüfen.",
     "toOverview": "Zur Übersicht"
+  },
+  "errorPage": {
+    "title": "Vorübergehend nicht erreichbar",
+    "hint": "Die App konnte gerade nicht geladen werden – eventuell startet die Datenbank neu. Bitte in ein paar Sekunden erneut versuchen.",
+    "retry": "Erneut versuchen"
   }
 }

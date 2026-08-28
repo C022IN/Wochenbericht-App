@@ -53,7 +53,16 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const authEnabled = isSupabaseAuthEnabled();
-  const user = authEnabled ? await getCurrentUser() : null;
+  let user: Awaited<ReturnType<typeof getCurrentUser>> | null = null;
+  if (authEnabled) {
+    try {
+      user = await getCurrentUser();
+    } catch {
+      // Auth/DB transiently unavailable (e.g. Supabase resuming) — render the shell as
+      // logged-out so the friendly page-level error boundary can handle the retry.
+      user = null;
+    }
+  }
   const userLabel = formatDisplayNameFromEmail(user?.email) || user?.id || "";
 
   const locale = await getLocale();
