@@ -91,6 +91,7 @@ export default async function DayPage({ params }: PageProps) {
       </section>
 
       <DailyEntryForm
+        key={date}
         date={date}
         initialEntry={entry}
         defaults={{

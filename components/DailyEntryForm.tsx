@@ -5,6 +5,30 @@ import { startTransition, useEffect, useMemo, useRef, useState, type ChangeEvent
 import { useTranslations } from "next-intl";
 import { EMPTY_DAILY_LINE, type DailyEntry, type DailyLineType } from "@/lib/types";
 import { BAULEITER_LIST } from "@/lib/team";
+import { computeBracketTotals, hasMeaningfulLineData } from "@/lib/entry-utils";
+
+function formatHours(value: number): string {
+  return String(Math.round(value * 100) / 100).replace(".", ",");
+}
+
+function previousIsoDate(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+// Day-specific fields cleared when copying a previous day (keep site/metadata, not the hours).
+function templatizeLine(line: DailyEntry["lines"][number]) {
+  return {
+    ...line,
+    id: makeLineId(),
+    beginn: "",
+    ende: "",
+    pauseOverride: "",
+    fahrzeit: "",
+    dayHoursOverride: ""
+  };
+}
 
 type EntryT = ReturnType<typeof useTranslations>;
 
@@ -312,7 +336,11 @@ export function DailyEntryForm({
   const [entry, setEntry] = useState(() => normalizeEntry(date, initialEntry, defaults));
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState("");
+  const [copyingPrev, setCopyingPrev] = useState(false);
   const firstRunRef = useRef(true);
+  // Holds the latest payload that has NOT yet been persisted, so a pending debounced
+  // change can be flushed when the user navigates away / closes the tab (bug: lost edits).
+  const dirtyRef = useRef<string | null>(null);
   const latestPayload = useMemo(() => JSON.stringify(entry), [entry]);
 
   useEffect(() => {
@@ -321,6 +349,7 @@ export function DailyEntryForm({
       return;
     }
 
+    dirtyRef.current = latestPayload;
     const timeout = window.setTimeout(async () => {
       setSaveState("saving");
       setError("");
@@ -338,6 +367,7 @@ export function DailyEntryForm({
         }
         if (!res.ok) throw new Error(data?.error || t("saveError"));
 
+        if (dirtyRef.current === latestPayload) dirtyRef.current = null;
         startTransition(() => {
           setSaveState("saved");
         });
@@ -351,6 +381,32 @@ export function DailyEntryForm({
 
     return () => window.clearTimeout(timeout);
   }, [date, latestPayload, t]);
+
+  // Flush any pending (debounced-but-unsaved) change on unmount / tab close, so leaving a
+  // day within the 650ms debounce window does not drop the edit. `keepalive` lets the PUT
+  // complete during navigation/unload. Bound to `date` so it always targets the right day.
+  useEffect(() => {
+    const flush = () => {
+      const payload = dirtyRef.current;
+      if (!payload) return;
+      dirtyRef.current = null;
+      try {
+        fetch(`/api/entries/${encodeURIComponent(date)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: payload,
+          keepalive: true
+        }).catch(() => {});
+      } catch {
+        // best-effort; nothing more we can do during unload
+      }
+    };
+    window.addEventListener("beforeunload", flush);
+    return () => {
+      window.removeEventListener("beforeunload", flush);
+      flush();
+    };
+  }, [date]);
 
   function updateLine(index: number, patch: Partial<(typeof entry.lines)[number]>) {
     const normalizedPatch = { ...patch };
@@ -408,19 +464,60 @@ export function DailyEntryForm({
     }));
   }
 
+  function duplicateLine(index: number) {
+    setEntry((prev) => {
+      const src = prev.lines[index];
+      if (!src) return prev;
+      const copy = { ...src, id: makeLineId() };
+      const lines = [...prev.lines];
+      lines.splice(index + 1, 0, copy);
+      return { ...prev, lines };
+    });
+  }
+
+  // Pull the previous day's rows in as a template (site/metadata kept, hours cleared). Appends
+  // to an already-filled day; replaces an empty one — never silently discards existing work.
+  async function copyPreviousDay() {
+    setCopyingPrev(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/entries/${encodeURIComponent(previousIsoDate(date))}`);
+      const data = (await res.json().catch(() => null)) as { entry?: DailyEntry | null } | null;
+      const prevLines = data?.entry?.lines?.filter(hasMeaningfulLineData) ?? [];
+      if (!prevLines.length) {
+        setError(t("copyPreviousEmpty"));
+        return;
+      }
+      const copied = prevLines.map(templatizeLine);
+      setEntry((prev) => {
+        const hasContent = prev.lines.some(hasMeaningfulLineData);
+        return { ...prev, lines: hasContent ? [...prev.lines, ...copied] : copied };
+      });
+    } catch {
+      setError(t("copyPreviousFailed"));
+    } finally {
+      setCopyingPrev(false);
+    }
+  }
+
   function setLineType(index: number, lineType: DailyLineType) {
     if (lineType === "baustelle") {
       updateLine(index, {
         lineType,
         beginn: "",
         ende: "",
-        pauseOverride: ""
+        pauseOverride: "",
+        fahrzeit: ""
       });
       return;
     }
 
     updateLine(index, { lineType });
   }
+
+  // Live day total using the exact rule the exporters use (arbeitszeit lines with an
+  // E/F bracket) — lets the user sanity-check hours without opening the Excel.
+  const dayTotals = useMemo(() => computeBracketTotals(entry.lines), [entry.lines]);
 
   return (
     <section className="grid" style={{ gap: "1rem" }}>
@@ -433,6 +530,14 @@ export function DailyEntryForm({
             </div>
           </div>
           <div className="toolbar">
+            {dayTotals.gesamt > 0 ? (
+              <span className="pill" title={t("dayTotalHint")}>
+                {t("dayTotal", {
+                  gesamt: formatHours(dayTotals.gesamt),
+                  netto: formatHours(dayTotals.netto)
+                })}
+              </span>
+            ) : null}
             {saveState === "saving" ? <span className="pill">{tc("saving")}</span> : null}
             {saveState === "saved" ? <span className="pill ok">{tc("saved")}</span> : null}
             {saveState === "error" ? <span className="pill err">{tc("error")}</span> : null}
@@ -460,6 +565,9 @@ export function DailyEntryForm({
           <button className="btn primary" type="button" onClick={addLine}>
             {t("addRow")}
           </button>
+          <button className="btn" type="button" onClick={copyPreviousDay} disabled={copyingPrev}>
+            {t("copyPreviousDay")}
+          </button>
         </div>
 
         {error ? <p className="status-text" style={{ color: "var(--danger)" }}>{error}</p> : null}
@@ -472,9 +580,14 @@ export function DailyEntryForm({
             <article className="line-card" key={line.id || index}>
               <header>
                 <h4>{t("row", { n: index + 1 })}</h4>
-                <button className="btn" type="button" onClick={() => removeLine(index)}>
-                  {t("remove")}
-                </button>
+                <div className="toolbar">
+                  <button className="btn" type="button" onClick={() => duplicateLine(index)}>
+                    {t("duplicateRow")}
+                  </button>
+                  <button className="btn" type="button" onClick={() => removeLine(index)}>
+                    {t("remove")}
+                  </button>
+                </div>
               </header>
 
               <div className="line-grid">

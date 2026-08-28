@@ -17,7 +17,7 @@ import {
   weekDatesToInfo
 } from "@/lib/calendar";
 import { getEntriesByDates, getProfile, getWeekCarData, getWeekSummary } from "@/lib/db";
-import { countMeaningfulLines } from "@/lib/entry-utils";
+import { computeBracketTotals, countMeaningfulLines } from "@/lib/entry-utils";
 import { requirePageUser } from "@/lib/auth";
 
 type PageProps = {
@@ -55,6 +55,20 @@ export default async function WeekPage({ params }: PageProps) {
   const segments = splitWeekByMonth(weekDates);
   const displayWeek = getWeekDisplayInfo(year, kw, weekDates);
 
+  // Weekly Gesamt using the same bracket rule as the export — a pre-export sanity check.
+  const weekTotals = dayInfos.reduce(
+    (acc, day) => {
+      const entry = entriesByDate[day.date];
+      if (!entry) return acc;
+      const totals = computeBracketTotals(entry.lines);
+      return {
+        gesamt: Math.round((acc.gesamt + totals.gesamt) * 100) / 100,
+        netto: Math.round((acc.netto + totals.netto) * 100) / 100
+      };
+    },
+    { gesamt: 0, netto: 0 }
+  );
+
   const todayIso = new Date().toISOString().slice(0, 10);
   const prevWeek = getIsoWeek(addDays(weekDates[0], -1));
   const nextWeek = getIsoWeek(addDays(weekDates[6], 1));
@@ -90,6 +104,14 @@ export default async function WeekPage({ params }: PageProps) {
         <div className="toolbar spread">
           <h2>{t("days")}</h2>
           <div className="toolbar">
+            {weekTotals.gesamt > 0 ? (
+              <span className="pill">
+                {t("weekTotal", {
+                  gesamt: String(weekTotals.gesamt).replace(".", ","),
+                  netto: String(weekTotals.netto).replace(".", ",")
+                })}
+              </span>
+            ) : null}
             <span className={summary.isMonthSplit ? "pill warn" : "pill ok"}>
               {summary.isMonthSplit ? t("split") : t("ok")}
             </span>

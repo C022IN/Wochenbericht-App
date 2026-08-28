@@ -18,10 +18,16 @@ export default function nextConfig(phase) {
     turbopack: {
       root: projectRoot
     },
-    // Ensure the xlsx template is included in the Vercel serverless function bundle.
-    // Next.js output file tracing does not follow dynamic fs.readFile() paths.
+    // Pin the tracing root to this project so include globs resolve against the right base
+    // (a stray sibling Next checkout can otherwise make Next pick the wrong workspace root).
+    outputFileTracingRoot: projectRoot,
+    // Ensure the xlsx template is bundled into EVERY serverless function that reads it.
+    // Next.js output file tracing does not follow dynamic fs.readFile() paths, and each API
+    // route is its own lambda — so the weekly cron needs its own explicit include or the
+    // Sunday email ENOENTs on the template and silently never sends.
     outputFileTracingIncludes: {
-      "/api/export": ["./examples/empty/**"]
+      "/api/export": ["./examples/empty/**"],
+      "/api/cron/weekly-report": ["./examples/empty/**"]
     }
   };
 
