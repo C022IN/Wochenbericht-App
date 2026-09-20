@@ -90,11 +90,12 @@ function pausePlaceholderForLine(line: DailyEntry["lines"][number], t: EntryT) {
   return t("pauseAutoValue", { value: String(inferredPause).replace(".", ",") });
 }
 
+// AXIANS (Kickuth, 03.09.2026): the old projects 8212/8221 are no longer recorded — only the
+// current project numbers. The former "alt" entries (P.0659633.1.01, P.0653304.1.01) were removed
+// and the "NEU"/"alt" distinction dropped.
 const KNOWN_PROJEKTNUMMERN: { code: string; label: string }[] = [
-  { code: "P.0923220.1.01", label: "PTI 21/25 NEU" },
-  { code: "P.0659633.1.01", label: "PTI 21/25 alt" },
-  { code: "P.0923209.1.01", label: "PTI 13/14 NEU" },
-  { code: "P.0653304.1.01", label: "PTI 13/14 alt" },
+  { code: "P.0923220.1.01", label: "PTI 21/25" },
+  { code: "P.0923209.1.01", label: "PTI 13/14" },
   { code: "G.014182.806.00", label: "Intern / Besprechung" },
   { code: "G.014182.796.00", label: "Schulung" },
   { code: "G.014182.801.00", label: "Jahresauftakt" },
@@ -118,6 +119,11 @@ const LOHN_PROJ_MAP: Record<string, string> = {
   F: "G.014182.827.00",
   K: "G.014182.838.00",
 };
+
+// AXIANS (Buchwald, 14.09.2026): Urlaub/Krank/Feiertag are full days and now carry "8" (hours)
+// in the weekday column instead of a letter as before.
+const ABSENCE_PROJ_CODES = new Set(["G.014182.840.00", "G.014182.838.00", "G.014182.827.00"]);
+const ABSENCE_DAY_HOURS = "8";
 
 function suggestProjektnummer(siteNameOrt: string, lohnType: string): string {
   if (LOHN_PROJ_MAP[lohnType]) return LOHN_PROJ_MAP[lohnType];
@@ -427,6 +433,15 @@ export function DailyEntryForm({
         const suggested = suggestProjektnummer(currentLine.siteNameOrt, normalizedPatch.lohnType);
         if (suggested) normalizedPatch.projektnummer = suggested;
       }
+      // Urlaub/Krank/Feiertag lohnType → full day: put "8" in the weekday column (new AXIANS rule).
+      if (
+        typeof normalizedPatch.lohnType === "string" &&
+        LOHN_PROJ_MAP[normalizedPatch.lohnType] &&
+        normalizedPatch.dayHoursOverride === undefined &&
+        !currentLine.dayHoursOverride.trim()
+      ) {
+        normalizedPatch.dayHoursOverride = ABSENCE_DAY_HOURS;
+      }
       return {
         ...prev,
         lines: prev.lines.map((line, i) => (i === index ? { ...line, ...normalizedPatch } : line))
@@ -437,12 +452,17 @@ export function DailyEntryForm({
   function autoFillProjOnSiteBlur(index: number, siteNameOrt: string) {
     setEntry((prev) => {
       const line = prev.lines[index];
-      if (line.projektnummer) return prev;
       const suggested = suggestProjektnummer(siteNameOrt, line.lohnType);
-      if (!suggested) return prev;
+      const patch: Partial<(typeof prev.lines)[number]> = {};
+      if (!line.projektnummer && suggested) patch.projektnummer = suggested;
+      // Urlaub/Krank/Feiertag site → full day: put "8" in the weekday column (new AXIANS rule).
+      if (ABSENCE_PROJ_CODES.has(suggested) && !line.dayHoursOverride.trim()) {
+        patch.dayHoursOverride = ABSENCE_DAY_HOURS;
+      }
+      if (Object.keys(patch).length === 0) return prev;
       return {
         ...prev,
-        lines: prev.lines.map((l, i) => (i === index ? { ...l, projektnummer: suggested } : l))
+        lines: prev.lines.map((l, i) => (i === index ? { ...l, ...patch } : l))
       };
     });
   }

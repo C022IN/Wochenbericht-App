@@ -44,25 +44,47 @@ function autoPauseHours(gross: number): number {
   return 0;
 }
 
+// Urlaub / Krank / Feiertag — full-day absences. They carry their logged day-hours (e.g. 8) and,
+// unlike normal site rows, count toward the weekly total (both O and P, no pause deducted).
+export const ABSENCE_PROJ_CODES = new Set(["G.014182.840.00", "G.014182.838.00", "G.014182.827.00"]);
+const ABSENCE_LOHN_TYPES = new Set(["U", "K", "F"]);
+
+export function isAbsenceLine(line: DailyLine): boolean {
+  return (
+    ABSENCE_PROJ_CODES.has(line.projektnummer.trim()) ||
+    ABSENCE_LOHN_TYPES.has(line.lohnType.trim().toUpperCase())
+  );
+}
+
 /**
- * The hours that actually feed the Excel Gesamtstunden: only arbeitszeit lines with a
- * Beginn/Ende bracket contribute (identical rule to the exporters' O/P formulas).
- * `gesamt` = sum of gross bracket hours (incl. pause); `netto` = minus pause.
+ * The hours that feed the Excel Gesamtstunden: arbeitszeit lines with a Beginn/Ende bracket
+ * (identical rule to the exporters' O/P formulas), PLUS Urlaub/Krank/Feiertag absence rows,
+ * which count their logged day-hours (e.g. 8) with no pause.
+ * `gesamt` = incl. pause; `netto` = minus pause.
  */
 export function computeBracketTotals(lines: DailyLine[]): { gesamt: number; netto: number } {
   let gesamt = 0;
   let netto = 0;
   for (const line of lines) {
-    if (line.lineType !== "arbeitszeit") continue;
     const start = parseHhMm(line.beginn);
     const end = parseHhMm(line.ende);
-    if (start === null || end === null) continue;
-    let gross = (end - start) / 60;
-    if (gross < 0) gross += 24; // crosses midnight
-    const explicit = parseNum(line.pauseOverride);
-    const pause = explicit !== null ? explicit : autoPauseHours(gross);
-    gesamt += gross;
-    netto += gross - pause;
+    if (line.lineType === "arbeitszeit" && start !== null && end !== null) {
+      let gross = (end - start) / 60;
+      if (gross < 0) gross += 24; // crosses midnight
+      const explicit = parseNum(line.pauseOverride);
+      const pause = explicit !== null ? explicit : autoPauseHours(gross);
+      gesamt += gross;
+      netto += gross - pause;
+      continue;
+    }
+    // Absence day (no clock bracket): count the logged hours, e.g. 8 for a full Urlaub day.
+    if (isAbsenceLine(line)) {
+      const hours = parseNum(line.dayHoursOverride);
+      if (hours !== null && hours > 0) {
+        gesamt += hours;
+        netto += hours;
+      }
+    }
   }
   return { gesamt: Math.round(gesamt * 100) / 100, netto: Math.round(netto * 100) / 100 };
 }

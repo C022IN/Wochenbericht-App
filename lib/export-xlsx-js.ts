@@ -1,4 +1,11 @@
 import { Workbook } from "exceljs";
+import { ABSENCE_PROJ_CODES } from "./entry-utils";
+
+// Urlaub/Krank/Feiertag full-day absences count toward the weekly total (unlike normal site rows).
+function isAbsenceExportRow(row: { lohnType: string; projektnummer: string }): boolean {
+  const lohn = (row.lohnType || "").trim().toUpperCase();
+  return ABSENCE_PROJ_CODES.has((row.projektnummer || "").trim()) || lohn === "U" || lohn === "K" || lohn === "F";
+}
 
 const WEEKDAY_COLS = ["H", "I", "J", "K", "L", "M", "N"] as const;
 const DATA_ROW_START = 10;
@@ -315,6 +322,17 @@ export async function exportXlsxJs(
         const marker = sanitizeExcelText(dayCellValue).trim();
         ws.getCell(`${weekdayCol}${rowNo}`).value = marker.toLowerCase() === "x" ? "x" : marker;
       }
+    }
+
+    // Urlaub/Krank/Feiertag full-day absences feed the weekly total: write the logged hours into
+    // O (Gesamt inkl. Pause) and P (Arbeitszeit) as literals, overriding the blank E/F formulas.
+    if (isAbsenceExportRow(rowData) && typeof dayCellValue === "number" && dayCellValue > 0) {
+      const oCell = ws.getCell(`O${rowNo}`);
+      oCell.value = dayCellValue;
+      oCell.numFmt = "0.##";
+      const pCell = ws.getCell(`P${rowNo}`);
+      pCell.value = dayCellValue;
+      pCell.numFmt = "0.##";
     }
 
     ws.getCell(`Q${rowNo}`).value = textOrNull(rowData.lohnType);

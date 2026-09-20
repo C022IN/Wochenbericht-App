@@ -22,6 +22,15 @@ DATA_ROW_END = 49
 # entered (the form shows "max 3" only as a soft hint, not a hard cap).
 FAHRZEIT_LABEL = "Fahrzeiten"
 
+# Urlaub/Krank/Feiertag full-day absences count toward the weekly total (unlike site rows).
+ABSENCE_PROJ_CODES = {"G.014182.840.00", "G.014182.838.00", "G.014182.827.00"}
+
+
+def is_absence_row(row_data: dict) -> bool:
+    lohn = str(row_data.get("lohnType", "")).strip().upper()
+    proj = str(row_data.get("projektnummer", "")).strip()
+    return proj in ABSENCE_PROJ_CODES or lohn in ("U", "K", "F")
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -243,6 +252,12 @@ def write_rows(ws, payload):
         elif weekday_col and isinstance(day_cell_value, str) and day_cell_value.strip():
             marker = day_cell_value.strip()
             ws[f"{weekday_col}{row_no}"] = "x" if marker.lower() == "x" else marker
+
+        # Urlaub/Krank/Feiertag full-day absences feed the weekly total: write the logged hours
+        # into O (Gesamt inkl. Pause) and P (Arbeitszeit), overriding the blank E/F formulas.
+        if is_absence_row(row_data) and isinstance(day_cell_value, (int, float)) and day_cell_value > 0:
+            ws[f"O{row_no}"] = float(day_cell_value)
+            ws[f"P{row_no}"] = float(day_cell_value)
 
         ws[f"Q{row_no}"] = row_data.get("lohnType", "")
         ws[f"R{row_no}"] = row_data.get("ausloese", "")
