@@ -18,7 +18,11 @@ data/
 template/
 *.db
 *.sqlite3
-README.md
 
 .vercel
 .env*.local
+
+# Local scratch / one-off tooling output
+.export-check-build/
+tmp-*
+*.log

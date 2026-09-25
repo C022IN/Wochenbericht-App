@@ -3,9 +3,15 @@
 import Link from "next/link";
 import { startTransition, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useTranslations } from "next-intl";
-import { EMPTY_DAILY_LINE, type DailyEntry, type DailyLineType } from "@/lib/types";
+import { EMPTY_DAILY_LINE, type DailyEntry, type DailyLine, type DailyLineType } from "@/lib/types";
 import { BAULEITER_LIST } from "@/lib/team";
-import { computeBracketTotals, hasMeaningfulLineData } from "@/lib/entry-utils";
+import {
+  ABSENCE_DAY_HOURS,
+  computeBracketTotals,
+  hasMeaningfulLineData,
+  isAbsenceLohnType,
+  isAbsenceProjektnummer
+} from "@/lib/entry-utils";
 
 function formatHours(value: number): string {
   return String(Math.round(value * 100) / 100).replace(".", ",");
@@ -121,9 +127,41 @@ const LOHN_PROJ_MAP: Record<string, string> = {
 };
 
 // AXIANS (Buchwald, 14.09.2026): Urlaub/Krank/Feiertag are full days and now carry "8" (hours)
-// in the weekday column instead of a letter as before.
-const ABSENCE_PROJ_CODES = new Set(["G.014182.840.00", "G.014182.838.00", "G.014182.827.00"]);
-const ABSENCE_DAY_HOURS = "8";
+// in the weekday column instead of a letter as before. The codes and the hours value live in
+// lib/entry-utils so the form, the totals and both exporters cannot drift apart.
+type LinePatch = Partial<DailyLine>;
+
+/**
+ * Applies the full-day-absence rules to a patch before it is merged into a line.
+ *
+ * Urlaub/Krank/Feiertag rows must carry "8" hours, otherwise the day drops out of the weekly
+ * total — the exporters and the in-app totals only count an absence row when it has hours. A line
+ * becomes an absence either by wage type (U/K/F) or by the project number it is given, so both
+ * paths have to fill the hours in. Switching back away from an absence undoes exactly what this
+ * form filled in, so a row the user changed back to normal work stops counting as a full day.
+ */
+function applyAbsenceRules(line: DailyLine, patch: LinePatch): void {
+  const nextLohnType = typeof patch.lohnType === "string" ? patch.lohnType.trim().toUpperCase() : null;
+  const wasAbsence = isAbsenceLohnType(line.lohnType);
+  const becomesAbsenceLohn = nextLohnType !== null && isAbsenceLohnType(nextLohnType);
+  const picksAbsenceProj = typeof patch.projektnummer === "string" && isAbsenceProjektnummer(patch.projektnummer);
+  const dayHoursUntouched = patch.dayHoursOverride === undefined;
+
+  if ((becomesAbsenceLohn || picksAbsenceProj) && dayHoursUntouched && !line.dayHoursOverride.trim()) {
+    patch.dayHoursOverride = ABSENCE_DAY_HOURS;
+    return;
+  }
+
+  if (nextLohnType !== null && wasAbsence && !becomesAbsenceLohn && !picksAbsenceProj) {
+    const autoFilledProj = LOHN_PROJ_MAP[line.lohnType.trim().toUpperCase()];
+    if (autoFilledProj && line.projektnummer.trim() === autoFilledProj && typeof patch.projektnummer !== "string") {
+      patch.projektnummer = "";
+    }
+    if (dayHoursUntouched && line.dayHoursOverride.trim() === ABSENCE_DAY_HOURS) {
+      patch.dayHoursOverride = "";
+    }
+  }
+}
 
 function suggestProjektnummer(siteNameOrt: string, lohnType: string): string {
   if (LOHN_PROJ_MAP[lohnType]) return LOHN_PROJ_MAP[lohnType];
@@ -433,15 +471,8 @@ export function DailyEntryForm({
         const suggested = suggestProjektnummer(currentLine.siteNameOrt, normalizedPatch.lohnType);
         if (suggested) normalizedPatch.projektnummer = suggested;
       }
-      // Urlaub/Krank/Feiertag lohnType → full day: put "8" in the weekday column (new AXIANS rule).
-      if (
-        typeof normalizedPatch.lohnType === "string" &&
-        LOHN_PROJ_MAP[normalizedPatch.lohnType] &&
-        normalizedPatch.dayHoursOverride === undefined &&
-        !currentLine.dayHoursOverride.trim()
-      ) {
-        normalizedPatch.dayHoursOverride = ABSENCE_DAY_HOURS;
-      }
+      // Urlaub/Krank/Feiertag → full day with "8" hours (new AXIANS rule).
+      applyAbsenceRules(currentLine, normalizedPatch);
       return {
         ...prev,
         lines: prev.lines.map((line, i) => (i === index ? { ...line, ...normalizedPatch } : line))
@@ -453,10 +484,13 @@ export function DailyEntryForm({
     setEntry((prev) => {
       const line = prev.lines[index];
       const suggested = suggestProjektnummer(siteNameOrt, line.lohnType);
-      const patch: Partial<(typeof prev.lines)[number]> = {};
+      const patch: LinePatch = {};
       if (!line.projektnummer && suggested) patch.projektnummer = suggested;
-      // Urlaub/Krank/Feiertag site → full day: put "8" in the weekday column (new AXIANS rule).
-      if (ABSENCE_PROJ_CODES.has(suggested) && !line.dayHoursOverride.trim()) {
+      // A Urlaub/Krank/Feiertag site is a full day — but only when that project number is actually
+      // applied to this row. If the user kept their own (non-absence) project number, the "8" must
+      // not be written, or Excel would show hours the weekly total deliberately ignores.
+      const resultingProj = patch.projektnummer ?? line.projektnummer;
+      if (isAbsenceProjektnummer(resultingProj) && !line.dayHoursOverride.trim()) {
         patch.dayHoursOverride = ABSENCE_DAY_HOURS;
       }
       if (Object.keys(patch).length === 0) return prev;

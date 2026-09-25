@@ -44,16 +44,38 @@ function autoPauseHours(gross: number): number {
   return 0;
 }
 
+/** Gross hours of a Beginn/Ende bracket; negative diffs wrap past midnight. */
+function bracketGrossHours(startMinutes: number, endMinutes: number): number {
+  const gross = (endMinutes - startMinutes) / 60;
+  return gross < 0 ? gross + 24 : gross;
+}
+
+/** Pause that applies to a bracketed row: the typed override, else the template's auto-pause. */
+function resolvePauseHours(line: DailyLine, gross: number): number {
+  const explicit = parseNum(line.pauseOverride);
+  return explicit !== null ? explicit : autoPauseHours(gross);
+}
+
 // Urlaub / Krank / Feiertag — full-day absences. They carry their logged day-hours (e.g. 8) and,
 // unlike normal site rows, count toward the weekly total (both O and P, no pause deducted).
+//
+// Single source of truth for "this row is a full-day absence": the entry form, the in-app day/week
+// totals and both exporters (ExcelJS + Python) have to agree, or the printed weekly Gesamtstunden
+// silently diverges from what the app previews.
+export const ABSENCE_DAY_HOURS = "8";
 export const ABSENCE_PROJ_CODES = new Set(["G.014182.840.00", "G.014182.838.00", "G.014182.827.00"]);
-const ABSENCE_LOHN_TYPES = new Set(["U", "K", "F"]);
+export const ABSENCE_LOHN_TYPES = new Set(["U", "K", "F"]);
+
+export function isAbsenceProjektnummer(value: string): boolean {
+  return ABSENCE_PROJ_CODES.has(value.trim());
+}
+
+export function isAbsenceLohnType(value: string): boolean {
+  return ABSENCE_LOHN_TYPES.has(value.trim().toUpperCase());
+}
 
 export function isAbsenceLine(line: DailyLine): boolean {
-  return (
-    ABSENCE_PROJ_CODES.has(line.projektnummer.trim()) ||
-    ABSENCE_LOHN_TYPES.has(line.lohnType.trim().toUpperCase())
-  );
+  return isAbsenceProjektnummer(line.projektnummer) || isAbsenceLohnType(line.lohnType);
 }
 
 /**

@@ -1,10 +1,10 @@
 import { Workbook } from "exceljs";
-import { ABSENCE_PROJ_CODES } from "./entry-utils";
+import { isAbsenceLohnType, isAbsenceProjektnummer } from "./entry-utils";
 
 // Urlaub/Krank/Feiertag full-day absences count toward the weekly total (unlike normal site rows).
+// Shares the rule with the entry form, the in-app totals and the Python exporter so all agree.
 function isAbsenceExportRow(row: { lohnType: string; projektnummer: string }): boolean {
-  const lohn = (row.lohnType || "").trim().toUpperCase();
-  return ABSENCE_PROJ_CODES.has((row.projektnummer || "").trim()) || lohn === "U" || lohn === "K" || lohn === "F";
+  return isAbsenceProjektnummer(row.projektnummer || "") || isAbsenceLohnType(row.lohnType || "");
 }
 
 const WEEKDAY_COLS = ["H", "I", "J", "K", "L", "M", "N"] as const;
@@ -300,11 +300,14 @@ export async function exportXlsxJs(
     if (endFrac !== null) ws.getCell(`F${rowNo}`).value = endFrac;
 
     const pauseOverride = parseDecimal(rowData.pauseOverride);
+    const absenceRow = isAbsenceExportRow(rowData);
     if (typeof pauseOverride === "number") {
       const pauseCell = ws.getCell(`G${rowNo}`);
       pauseCell.value = pauseOverride;
       pauseCell.numFmt = "0.##";
-    } else if (!rowData.beginn && !rowData.ende && typeof dayCellValue === "number") {
+    } else if (!absenceRow && !rowData.beginn && !rowData.ende && typeof dayCellValue === "number") {
+      // Back out the pause the template's auto formula would have applied when only net hours are
+      // known. Never for a full-day absence: it carries literal hours and has no pause to show.
       const p = inferPauseFromNetHours(dayCellValue);
       if (typeof p === "number" && p > 0) {
         const pauseCell = ws.getCell(`G${rowNo}`);
@@ -326,7 +329,7 @@ export async function exportXlsxJs(
 
     // Urlaub/Krank/Feiertag full-day absences feed the weekly total: write the logged hours into
     // O (Gesamt inkl. Pause) and P (Arbeitszeit) as literals, overriding the blank E/F formulas.
-    if (isAbsenceExportRow(rowData) && typeof dayCellValue === "number" && dayCellValue > 0) {
+    if (absenceRow && typeof dayCellValue === "number" && dayCellValue > 0) {
       const oCell = ws.getCell(`O${rowNo}`);
       oCell.value = dayCellValue;
       oCell.numFmt = "0.##";
